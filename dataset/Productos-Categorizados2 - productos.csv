@@ -1,0 +1,733 @@
+familia,sub-familia,CÓDIGO,PRODUCTO,IMPORTADO
+Accesorios Gastronómicos,accesorio-con-mecanismo,DPF-230,Dispensador de Papas,
+Accesorios Gastronómicos,accesorio-con-mecanismo,PIPP-0395,Cortadora de Papas,
+Accesorios Gastronómicos,accesorio-con-mecanismo,PICF-0575,Cortador de Fiambre,
+Accesorios Gastronómicos,accesorio-con-mecanismo,SBUR-0150,Smasher Burger,
+Accesorios Gastronómicos,accesorio-simple,SVC-120,Servilletero Modelo Copa,
+Accesorios Gastronómicos,accesorio-simple,ECS-105,Escurridor de Servicio,
+Accesorios Gastronómicos,accesorio-simple,PBJ-400,Porta Bandejas,
+Accesorios Gastronómicos,accesorio-simple,PL-030,Pala de Basura,
+Accesorios Gastronómicos,accesorio-simple,PORV-050,Porta Vaso,
+Accesorios Gastronómicos,accesorio-simple,PORT-0250,Porta Platos,
+Accesorios Gastronómicos,accesorio-simple,PLCHCC-0435,Plancha de Acero Inoxidable,
+Accesorios Gastronómicos,accesorio-simple,ESPL-00140,Espatula Plancha,
+Accesorios Gastronómicos,accesorio-simple,ESPL-00150,Espatula Plancha,
+Accesorios Gastronómicos,accesorio-con-mecanismo,TOST-01,Tostador de Pan,
+Accesorios Gastronómicos,importado,DPJ-00560,Dispensador de Jugos,IMPORTADO
+Bandejas,bandeja-simple,BACOAN-0400,Bandeja de Cobre 400 MM Diámetro,
+Bandejas,bandeja-pasavalores,BANPSVC-00150,Bandeja Pasavalores 300 X 200 X 40 MM,
+Bandejas,bandeja-simple,BACNOX-0400,Bandeja Acero Inoxidable 400 MM Diámetro,
+Bandejas,bandeja-carro,BAUCB-0670,Bandeja para Carro AUCB-0670,
+Bandejas,bandeja-carro,BAUCB-0790,Bandeja para Carro AUCB-0790,
+Bandejas,bandeja-carro,BAUCB-0178,Bandeja para Carro AUCB-0178,
+Bandejas,bandeja-pasavalores,BANPSVC-00260,Bandeja Pasavalores 360 X 260 X 40 MM,
+Bandejas,bandeja-pasavalores,BANPSVC-00300,Bandeja Pasavalores 300 X 300 X 40 MM,
+Bandejas,bandeja-carro,BAUCB-0810,Bandeja para Carro AUCB-0810,
+Bandejas,bandeja-simple,,Bandeja 360 MM,
+Bandejas,bandeja-simple,,Bandeja 380 MM,
+Baño María,bano-maria-simple,DUBM,Baño Maria 1 Deposito Full,
+Baño María,bano-maria-simple,DUBM2,Baño Maria 2 Deposito Full,
+Baño María,bano-maria-electrico,HB-2T,Baño Maria Eléctrica,IMPORTADO
+Baño María,bano-maria-encimera,HEB-609,Baño Maria Encimera Electrica,IMPORTADO
+Baño María,chocolatera,HW-22,Chocolatera Eléctrica de Sobremesa,IMPORTADO
+Baño María,bano-maria-con-gabinete,HGR-909,Baño Maria con Gabinete,IMPORTADO
+Baño María,bano-maria-electrico,BMDF-540,Baño Maria Eléctrico de Sobremesa 1 Depósito Full,
+Baño María,bano-maria-electrico,BMDM-540,Baño Maria Eléctrico de Sobremesa 2 Depósitos 1/2,
+Baño María,bano-maria-simple,DUBM4,Baño Maria 4 Deposito Full,
+Baño María,bano-maria-simple,DUBM3,Baño Maria 3 Deposito Full,
+Baño María,bano-maria-simple,DUBM3C,Baño Maria Sobremesa 3 Deposito Full,
+Baño María,chocolatera,DUBMCH,Chocolatera Baño María 6L,
+Baño María,accesorio,CCFR-00580,Cocedora de Pastas,IMPORTADO
+Cámaras Desgrasadoras,pequena,CADE20-0415,Camara Desgrasadora 20L,
+Cámaras Desgrasadoras,pequena,CADE30-0415,Camara Desgrasadora 30L,
+Cámaras Desgrasadoras,pequena,CADE40-0500,Camara Desgrasadora 40L,
+Cámaras Desgrasadoras,mediana,CADE50-0500,Camara Desgrasadora 50L,
+Cámaras Desgrasadoras,mediana,CADE60-0600,Camara Desgrasadora 60L,
+Cámaras Desgrasadoras,mediana,CADE70-0620,Camara Desgrasadora 70L,
+Cámaras Desgrasadoras,grande,CADE80-0500,Camara Desgrasadora 80L,
+Cámaras Desgrasadoras,grande,CADE90-0500,Camara Desgrasadora 90L,
+Cámaras Desgrasadoras,grande,CADE100-0650,Camara Desgrasadora 100L,
+Campanas Industriales y Domésticas,campana-central,CCCI-1513,Campana Central 1500x1300x400,
+Campanas Industriales y Domésticas,campana-central,CCCI-2013,Campana Central 2000x1300x400,
+Campanas Industriales y Domésticas,campana-central,CCCI-3013,Campana Central 3000x1300x400,
+Campanas Industriales y Domésticas,campana-mural,CCCM-1510,Campana Mural 1500x1000x400,
+Campanas Industriales y Domésticas,campana-mural,CCCM-2010,Campana Mural 2000x1000x400,
+Campanas Industriales y Domésticas,campana-mural,CCCM-3010,Campana Mural 3000x1000x400,
+Campanas Industriales y Domésticas,accesorio-campana,FIL-050,Filtro Campana,
+Campanas Industriales y Domésticas,accesorio-campana,,Filtro Campana 495 MM IMAHE,
+Campanas Industriales y Domésticas,accesorio-campana,FC-100,Foco Campana,
+Campanas Industriales y Domésticas,accesorio-campana,,"Extractor Axial 10""",
+Campanas Industriales y Domésticas,accesorio-campana,,"Extractor Axial 12""",
+Campanas Industriales y Domésticas,accesorio-campana,,"Extractor Axial 14""",
+Campanas Industriales y Domésticas,accesorio-campana,,"Extractor Axial 16""",
+Campanas Industriales y Domésticas,accesorio-campana,,"Extractor Turbo 8.5""",
+Campanas Industriales y Domésticas,accesorio-campana,,"Extractor Turbo 10""",
+Campanas Industriales y Domésticas,accesorio-campana,,Extractor Turbo 12'',
+Campanas Industriales y Domésticas,accesorio-campana,,"Gorro Chino para Extractor 10""",
+Campanas Industriales y Domésticas,accesorio-campana,,"Gorro Chino para Extractor 12""",
+Campanas Industriales y Domésticas,accesorio-campana,,"Gorro Chino para Extractor 16""",
+Carros de Traslado,carro-bandejero,AUCB-0670,Carro Bandejero Cap 22 Bandejas,
+Carros de Traslado,carro-bandejero,AUCB-0178,Carro Bandejero Cap 12 Bandejas,
+Carros de Traslado,carro-bandejero,AUCB-0911,Carro Bandejero Cap 9 Bandejas,
+Carros de Traslado,carro-bandejero,AUCB-0810,Carro Bandejero Cap 24 Bandejas,
+Carros de Traslado,carro-bandejero,AUCB-1600,Carro Porta Tachos,
+Carros de Traslado,carro-especial,CPCC-2150,Carro Transporte Cadaver,
+Carros de Traslado,carro-cerrado,AUCB-0790,Carro Cerrado Cap 8 Bandejas,
+Carros de Traslado,carro-cerrado,CATR-0800,Carro Traslado Cerrado para Bandejas con Repisa y Base,
+Carros de Traslado,carro-bandejero,AUCB-0600,Carro Batea para Hielo,
+Carros de Traslado,carro-bandejero,AUCB-0900,Carro para Sushi,
+Carros Multipropósito,carro-multiproposito,CAMMUL-0175,Carro Multipropósito,
+Carros Multipropósito,carro-food,CAFOD-01900,Carro Hot Dog Green Dog,
+Carros Multipropósito,carro-food,CAHD-01900,Carro para Hot Dog y Hamburguesas,
+Carros Multipropósito,carro-food,CAMAU-01200,Carro Hot Dog Autónomo,
+Carros Multipropósito,carro-food,CAMCUR-01400,Carro Multipropósito Curvo,
+Carros Multipropósito,carro-food,CAMHU-01200,Carro para Mote con Huesillo,
+Carros Multipropósito,carro-food,CAJUG-01000,Carro para Jugos,
+Carros Multipropósito,carro-multiproposito,,Carro Multipropósito Recto,
+Cocinas Industriales,anafe,1PQ,Anafe Industrial a Gas 1 Quemador,
+Cocinas Industriales,anafe,1PQN,Anafe Industrial a Gas 1 Quemador,
+Cocinas Industriales,anafe,2PQ,Anafe Industrial a Gas 2 Quemadores,
+Cocinas Industriales,anafe,2PQL,Anafe Industrial a Gas 2 Quemadores Alta,
+Cocinas Industriales,anafe,2PQN,Anafe Industrial a Gas 2 Quemadores,
+Cocinas Industriales,cocina-gas,3PQ,Cocina Industrial a Gas 3 Quemadores,
+Cocinas Industriales,cocina-gas,4PQ,Cocina Industrial a Gas 4 Quemadores,
+Cocinas Industriales,cocina-gas,4PQN,Cocina Industrial a Gas 4 Quemadores,
+Cocinas Industriales,cocina-con-plancha,4PQCH,Cocina Industrial a Gas 4 Quemadores con Placha Churrasquera,
+Cocinas Industriales,cocina-con-plancha,4PQCHBM,Cocina 4 Quemadores con Plancha Churrasquera y Baño Maria,
+Cocinas Industriales,cocina-con-horno,4PQH,Cocina 4 Quemadores con Horno,
+Cocinas Industriales,cocina-con-horno,4PQHCH,Cocina 4 Quemadores con Horno y Plancha Churrasquera,
+Cocinas Industriales,cocina-gas,6PQ,Cocina 6PQ,
+Cocinas Industriales,cocina-con-plancha,6PQCH,Cocina 6 Quemadores con Plancha Churrasquera,
+Cocinas Industriales,cocina-con-horno,6PQH,Cocina 6 Quemadores con Horno,
+Cocinas Industriales,cocina-con-horno,6PQHCH,Cocina 6 Quemadores con Horno y Plancha Churrasquera,
+Cocinas Industriales,cocina-gas,8PQ,Cocina 8PQ,
+Cocinas Industriales,parrilla,CCCG-0003,Parrilla a Gas,
+Cocinas Industriales,cocina-wok,COWK-800,Cocina Wok 1 fogon,
+Cocinas Industriales,cocina-wok,COWK-1200,Cocina Wok 2 fogones,
+Cocinas Industriales,cocina-wok,COWK-1800,Cocina Wok 3 fogones,
+Cocinas Industriales,cocina-wok,COWK-2700,Cocina Wok 4 fogones,
+Cocinas Industriales,parrilla,HGL-907,Parrilla con Roca Volcánica a Gas,IMPORTADO
+Cocinas Industriales,cocina-gas,HGR-905,Cocina 4 Quemadores Gas,IMPORTADO
+Cocinas Industriales,cocina-con-horno,HGR-998,Cocina 4 Quemadores con Horno y Plancha Lisa/ Gas,IMPORTADO
+Cocinas Industriales,vitrina-caliente,HW-862,Vitrina Caliente 650,IMPORTADO
+Cocinas Industriales,vitrina-caliente,HW-863,Vitrina Caliente 900,IMPORTADO
+Cocinas Industriales,parrilla,,Parrilla Piloto a Gas,
+Cocinas Industriales Eléctricas,cocina-electrica,CCCE-0013,Cocina Eléctrica 4 Quemadores,
+Cocinas Industriales Eléctricas,cocina-electrica,CCCE-0014,Cocina Eléctrica 8 Quemadores,
+Cocinas Industriales Eléctricas,cocina-electrica,CCCE-0006,Cocina Industrial Eléctrica,
+Cocinas Industriales Eléctricas,cocina-induccion,,Cocina de inducción 300,
+Cocinas Industriales Eléctricas,cocina-induccion,,Cocina de Inducción 600,
+Depósitos Gastronómicos,deposito-gn,DEP1/2-0016,Deposito Gastronomico 1/2X65,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEP1/2-0061,Deposito Gastronomico 1/2X100,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEP1/2-0104,Deposito Gastronomico 1/2X150,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEP1/3-0041,Deposito Gastronomico 1/3X100,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEP1/3-0062,Deposito Gastronomico 1/3X150,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEP1/4-0038,Deposito Gastronomico 1/4X100,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEP1/4-0047,Deposito Gastronomico 1/4X150,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEP1/6-0019,Deposito Gastronomico 1/6X100,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEP1/9-0026,Deposito Gastronomico 1/9X100,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEPFULL-0065,Deposito Gastronomico FULLX65,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEPFULL-0137,Deposito Gastronomico FULLX100,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEPFULL-0208,Deposito Gastronomico FULLX150,IMPORTADO
+Depósitos Gastronómicos,deposito-gn,DEPFULL-0200,Deposito Gastronomico FULLX200,IMPORTADO
+Depósitos Gastronómicos,tapa-deposito,TDEP1/2-0002,Tapa Deposito 1/2,IMPORTADO
+Depósitos Gastronómicos,tapa-deposito,TDEP1/3-0004,Tapa Deposito 1/3,IMPORTADO
+Depósitos Gastronómicos,tapa-deposito,TDEP1/4-0005,Tapa Deposito 1/4,IMPORTADO
+Depósitos Gastronómicos,tapa-deposito,TDEP1/6-0006,Tapa Deposito 1/6,IMPORTADO
+Depósitos Gastronómicos,tapa-deposito,TDEP1/9-0007,Tapa Deposito 1/9,IMPORTADO
+Depósitos Gastronómicos,tapa-deposito,TDEPFULL-0001,Tapa Deposito Full,IMPORTADO
+Estantes,repisa-simple,RMAI-0300,Repisa Simple 300 MM,
+Estantes,repisa-simple,RMAI-0400,Repisa Simple 400 MM,
+Estantes,repisa-doble,RMAI-1000,Metro Lineal Repisa Doble,
+Estantes,repisa-doble,RMAI-1200,Repisa Doble 1200 MM,
+Estantes,repisa-especial,SECP-1200,Repisa para Secado de Platos,
+Estantes,repisa-especial,RMPC-0820,Repisa Mural Porta Chata,
+Estantes,estanteria-especial,EV-1810,Estructura para Vinos,
+Estantes,armario,EC2P,Armario Especial Laboratorio 1200 MM,
+Estantes,armario,EC3P,Armario Especial Laboratorio 1800 MM,
+Estantes,armario,ESTW-0840,Armario W 800,
+Estantes,armario,ESTW-1040,Armario W 1000,
+Estantes,estanteria-lisa,BAET-0104,Estantería Lisa 900 X 450 MM,
+Estantes,estanteria-lisa,BAET-0900,Estantería Lisa 900 X 600 MM,
+Estantes,estanteria-lisa,BAET-1200,Estantería Lisa 1200 X 450 MM,
+Estantes,estanteria-lisa,BAET-0600,Estantería Lisa 1200 X 600 MM,
+Estantes,estanteria-lisa,BAET-1500,Estantería Lisa 1500 X 450 MM,
+Estantes,estanteria-lisa,BAET-1600,Estantería Lisa 1600 X 600 MM,
+Estantes,estanteria-parrilla,BAET-0204,Estantería Parrilla 900 X 450 MM,
+Estantes,estanteria-parrilla,BAET-0960,Estantería Parrilla 900 X 600 MM,
+Estantes,estanteria-parrilla,BAET-1245,Estantería Parrilla 1200 X 450 MM,
+Estantes,repisa-especial,BAET-1130,Estante con Repisa para Secado de Platos,
+Estantes,estanteria-parrilla,BAET-0612,Estantería Parrilla 1200 X 600 MM,
+Estantes,estanteria-parrilla,BAET-1545,Estantería Parrilla 1500 X 450 MM,
+Estantes,estanteria-parrilla,BAET-1660,Estantería Parrilla 1600 X 600 MM,
+Freidoras,freidora-gas,FDP020,Freidora de Papas con 2 Canastillos a Gas,IMPORTADO
+Freidoras,freidora-gas,FDP030,Freidora de Papas con 2C/3Q A GAS,IMPORTADO
+Freidoras,freidora-gas,FDP038,Freidora de Papas con 3 Canastillos a Gas,IMPORTADO
+Freidoras,freidora-gas,HGF-968,Freidora 1 Canastillo con Gabinete/ Gas,IMPORTADO
+Freidoras,freidora-gas,HGF-908,Freidora 2 Canastillos con Gabinete/ Gas,IMPORTADO
+Freidoras,freidora-electrica,HEF-26,Freidora Eléctrica Simple,IMPORTADO
+Freidoras,freidora-electrica,HEF-26-2,Freidora Eléctrica Doble,IMPORTADO
+Freidoras,freidora-electrica,HEF-608,Freidora Electrica Encimera 2 Canastillos,IMPORTADO
+Freidoras,freidora-electrica,HEF-12L,Freidora Encimera Electrica 1 Canastillo,IMPORTADO
+Freidoras,freidora-electrica,HEF-12L-2,Freidora Encimera Electrica 2 Canastillos,IMPORTADO
+Freidoras,accesorio-freidora,,Enchufe 16 Amperes,IMPORTADO
+Freidoras,freidora-especial,CCFR-056,Freidora de Vienesas Electrica,
+Freidoras,accesorio-freidora,CCFR-0057,Mantenedor de Papas Fritas,
+Freidoras,accesorio-freidora,CPFS-1320,Chute de Papas Fritas Y Sandwitch,
+Freidoras,accesorio,CCFR-0058,Cocedora de Pastas,IMPORTADO
+Griferías,estacion-agua,GEA1,Estacion de Agua 240,IMPORTADO
+Griferías,estacion-agua,GEA2,Estacion de Agua 250,IMPORTADO
+Griferías,griferia-especial,GLLC,Griferia Lava Cucharas,IMPORTADO
+Griferías,griferia-especial,GLLP,Llave Precision de 65mm,IMPORTADO
+Griferías,cuello-cisne,GRILLCC-00210,Cuello Cisne Corto 21cm,IMPORTADO
+Griferías,cuello-cisne,GRILLCC-00300,Cuello Cisne Largo 30cm,IMPORTADO
+Griferías,cuello-cisne,GRILLM-00280,Llave Monomando con Cuello Cisne,IMPORTADO
+Griferías,cuello-cisne,GRILLC-00220,Llave Combinacion con Cuello Cisne,IMPORTADO
+Griferías,cuello-cisne,GRILLC-00310,Llave Cuello Cisne Recto,IMPORTADO
+Griferías,prewash,GRILLPW-0620,Llave Pre-wash Corta,IMPORTADO
+Griferías,prewash,GRILLPW-1100,Llave Pre-wash a Base Cubierta,IMPORTADO
+Griferías,prewash,GRILLPWCC-1100,Llave Pre-wash a Base Cubierta con Cuello Cisne,IMPORTADO
+Griferías,prewash,GRILLPWM-1118,Llave Pre-wash a Muro,IMPORTADO
+Griferías,prewash,GRILLPWMC-1118,Llave Pre-wash a Muro con Cuello Cisne,IMPORTADO
+Griferías,prewash,GRILLPWR-0450,Llave Pre-wash Manguera retractil,IMPORTADO
+Griferías,griferia-pedal,GRILPS-00120,Llave Pedal Simple,IMPORTADO
+Griferías,griferia-pedal,GRILLP-00120,Llave Pedal Doble,IMPORTADO
+Griferías,griferia-rodilla,GRILRS-00210,Llave Rodilla Simple,IMPORTADO
+Griferías,griferia-rodilla,GRILLR-00230,Llave Rodilla Doble,IMPORTADO
+Griferías,desague,GRIDES-001,Desague 1 1/4,IMPORTADO
+Griferías,desague,GRIDES-002,Desague 1 1/2,IMPORTADO
+Griferías,desague,GRIDES-004,Desague 4 1/2,IMPORTADO
+Griferías,cuello-cisne,GRIBWR-001,Llave Cuello Cisne Recto Simple,IMPORTADO
+Griferías,cuello-cisne,GRIBXF-N1,Llave Cuello Cisne Doble a Muro,IMPORTADO
+Griferías,griferia-especial,GRICU-0260,Griferia Lava Cucharas,IMPORTADO
+Griferías,prewash,GEN1705-04,Llave Pre-wash a Base Cubierta con Monomando 1/2 Genebre,IMPORTADO
+Griferías,prewash,GEN1743-04,Llave Pre-wash a Muro con Cuello Cisne Genebre,IMPORTADO
+Griferías,prewash,GEN1802-04,Llave Pre-wash a Base Cubierta con Monomando Mezclador Genebre,IMPORTADO
+Griferías,griferia-simple,GEN61203,Monomando de Fregadera Caño K8 Genebre,IMPORTADO
+Griferías,valvula,GEN2014-04,Llave de Paso Válvula Esfera 2 Piezas 1/2,IMPORTADO
+Griferías,prewash,GEN1724-04,Llave Pre-wash a Muro con Monomando Mezclador Genebre,IMPORTADO
+Hervidores,hervidor,AUHA-0158,Hervidor de Agua 30 LTRS.,
+Hervidores,hervidor,AUHA-0157,Hervidor de Agua 20 LTRS.,
+Hervidores,hervidor,HAE-10,Hervidor de Agua 10 LTRS.,
+Hervidores,hervidor,HAE-20,Hervidor de Agua 20 LTRS.,
+Hervidores,hervidor,HAE-30,Hervidor de Agua 30 LTRS.,
+Hervidores,calentador-leche,HCL-15,Calentador de Leche 15 LTRS.,
+Hornos,horno-industrial,CCHC-0048,Horno de 1 Camara Normalizado,
+Hornos,horno-industrial,CCHC-0049,Horno de 2 Camaras Normalizado,
+Hornos,horno-industrial,CCHC-0050,Horno de 3 Camaras Normalizado,
+Hornos,horno-convector,HEB-4F,Horno Convector eléctrico 4B,IMPORTADO
+Hornos,horno-convector,HEB-8F,Horno Convector eléctrico de 835MM,IMPORTADO
+Hornos,horno-convector,HCO-04E,Horno Convector Electrico 4,IMPORTADO
+Hornos,horno-convector,HCO-06E,Horno Convector Electrico 6,IMPORTADO
+Hornos,horno-convector,HCO-10E,Horno Convector Electrico 10,IMPORTADO
+Hornos,accesorio,,Atril para Horno Convector,
+Hornos,accesorio,,Ablandador de agua,
+Hornos,horno-pizza,PIHP-01130,Horno Electrico Pizzero,IMPORTADO
+Hornos,horno-pizza,HEP-1ST,Horno de Pizza Eléctrico Simple,IMPORTADO
+Hornos,horno-asador,PR-623ST,Horno Asador de Pollo 4 Espadas,IMPORTADO
+Hornos,horno-asador,HGJ-306,Horno de Pollos Vertical,IMPORTADO
+Hornos,horno-asador,HGJ-368,Asador de Pollos a gas,IMPORTADO
+Hornos,gratinador,PIHS-01130,Gratinador Grill eléctrico,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Kangkawe,importado,,,IMPORTADO
+Lavaderos,lavamanos,ZLLRC-0420,Lavamanos con Faldon,IMPORTADO
+Lavaderos,lavamanos,ZLLRA-0421,Lavamano con Atril y Accionamiento de Rodilla,IMPORTADO
+Lavaderos,lavamanos,ZLLRF-0422,Lavamano Inox Rodilla,IMPORTADO
+Lavaderos,lavamanos,ZLLRF-0530,Lavamanos un Puesto,IMPORTADO
+Lavaderos,lavamanos,ZLLRP-0700,Lavamanos con pedestal,IMPORTADO
+Lavaderos,lavamanos,DV-400,Lavamanos Mural con Respaldo (Vollrath),IMPORTADO
+Lavaderos,lavamanos,DV-400A,Lavamanos con Atril (Vollrath),IMPORTADO
+Lavaderos,lavamanos,ZLLCA-0031,Lavamanos Fijación a Muro Taza 320x230x130,IMPORTADO
+Lavaderos,lavamanos,ZLLCA-0040,Lavamanos con Atril Taza 320x230x130,IMPORTADO
+Lavaderos,lavamanos,ZLLCA-0055,Lavamanos 1 Taza con Llave Rodilla,IMPORTADO
+Lavaderos,taza-accesorio,ZLLCA-0066,Lavafondo 1 Taza 600x600,IMPORTADO
+Lavaderos,taza-accesorio,ZLLCA-0088,Lavafondo 1 Taza 700X600,IMPORTADO
+Lavaderos,taza-accesorio,ZLLCA-0099,Lavafondo 1 Taza 700X700,IMPORTADO
+Lavaderos,lavamopa,ZLLCA-0506,Mueble Lavamopas,IMPORTADO
+Lavaderos,lavadero-simple,ZLLCA-0111,Lavadero de 1200mm,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLCA-1260,Lavadero Doble Inox Abierto,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLCA-1200,Lavadero Doble Inox Abierto,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLCA-1800,Lavadero Triple Inox,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLCA-2200,Lavadero Especial 3 Puestos,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLCA-3800,Lavadero Especial 4 Puestos,IMPORTADO
+Lavaderos,taza-accesorio,ZLLCA-0104,Lavadero 1 Taza 1200 con Secador Derecho,IMPORTADO
+Lavaderos,taza-accesorio,ZLLCA-1104,Lavadero 1 Taza 1200 con Secador Izquierdo,IMPORTADO
+Lavaderos,taza-accesorio,ZLLCA-0103,Lavadero 2 Tazas 1400 Con Secador Derecho,IMPORTADO
+Lavaderos,taza-accesorio,ZLLCA-1103,Lavadero 2 Tazas 1400 Con Secador Izquierdo,IMPORTADO
+Lavaderos,taza-accesorio,ZLLCA-0106,Lavadero 2 Tazas 1600 con Secador Derecho,IMPORTADO
+Lavaderos,taza-accesorio,ZLLCA-1106,Lavadero 2 Tazas 1600 con Secador Izquierdo,IMPORTADO
+Lavaderos,lavadero-simple,LAPP-0700,Lavadero de 1 Puesto de Trabajo,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLE-0126,Lavadero de 2 Puestos de Trabajo,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLE-0127,Lavadeo de 3 Puestos de Trabajo,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLE-0128,Lavadero de 4 Puestos de Trabajo,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLE-0129,Lavadero de 5 Puestos de Trabajo,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLE-0130,Lavadero de 6 Puestos de Trabajo,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLE-0131,Lavadero de 7 Puestos de Trabajo,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLE-0260,Lavadero de 8 puestos de Trabajo,IMPORTADO
+Lavaderos,lavadero-multiple,ZLLE-1500,Lavadero acero inox especial con tolva,IMPORTADO
+Lavaderos,taza-accesorio,,Lavadero 2 Tazas 1900 con Secador Izquierdo,IMPORTADO
+Lavaderos,cubierta-con-taza,CUTAZ-0009,Cubierta de 400x300x150 con Taza 320x230x150,IMPORTADO
+Lavaderos,cubierta-con-taza,CUTAZ-0060,Cubierta de 600x600 con Taza 500x400x250,IMPORTADO
+Lavaderos,cubierta-con-taza,CUTAZ-0040,Cubierta de 700x600 con Taza 500x400x250,IMPORTADO
+Lavaderos,cubierta-con-taza,CUTAZ-0075,Cubierta de 700x700 con Taza 500x500x300,IMPORTADO
+Lavaderos,cubierta-con-taza,CUTAZ-1260,Cubierta de 1200x600 con Taza 500x400x250,IMPORTADO
+Lavaderos,cubierta-con-taza,CUTAZ-1200,Cubierta de 1200x600 con 2 Tazas 500x400x250,IMPORTADO
+Lavaderos,cubierta-con-taza,CUTAZ-1460,Cubierta de 1400x600 con 2 Tazas 400x400x250,IMPORTADO
+Lavaderos,cubierta-con-taza,CUTAZ-1660,Cubierta de 1600x600 con 2 Tazas 450x400x250,IMPORTADO
+Lavaderos,cubierta-con-taza,CUTAZ-1670,Cubierta de 1600x700 con 2 Tazas 500x500x300,IMPORTADO
+Lavaderos,lavamanos,CUTZ-00290,Lavamanos Fijo a Muro con Taza 290,
+Lavaderos,lavamanos,CUTZ-00380,Lavamanos Fijo a Muro con Taza 380,
+Lavaderos,taza-accesorio,TAZ-0027,Taza 355X405X191MM Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0043,Taza 400X350X191 Des 4 1/1,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0032,Taza 400X400X200 Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0040,Taza 400X400X250 Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0048,Taza 400X400X300 Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0050,Taza 450X450X250 Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0061,Taza 450X450X300 Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0051,Taza 500X400X250 Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0054,Taza 500X400X300,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0062,Taza 500X500X250 Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0075,Taza 500X500X300 Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZ-0090,Taza 600X500X300 Des 4 1/2,IMPORTADO
+Lavaderos,taza-accesorio,TAZOV-0290,Taza Redonda 290mm,IMPORTADO
+Lavaderos,taza-accesorio,TAZOV-0380,Taza Redonda 380mm,IMPORTADO
+Lavaderos,accesorio-clinico,BEINOX-0520,Bebedero,
+Lavaderos,accesorio-clinico,LO-01,Lavaojos,IMPORTADO
+Lavaderos,lavamopa,LVMPA-880,Lavamopa 880,
+Lavavajillas,lavavajillas,HDW-50,Lavavajillas 500X500MM,IMPORTADO
+Lavavajillas,lavavajillas,HDW-80,Lavavajillas 640X740X1470MM,IMPORTADO
+Lavavajillas,accesorio,,Ablandador de Agua,IMPORTADO
+Lavavajillas,meson-repisa,BAMTE-0900,Mesón Salida de Lavavajilla,
+Lavavajillas,meson-en-proyecto,BAMTE-1400,Mesón Entrada de Lavavajilla con Desconche,
+Mesones de Trabajo,meson-simple,BAMT-0900,Mesón Abierto de Trabajo de 900mm,
+Mesones de Trabajo,meson-repisa,BAMT-1000,Mesón Abierto de Trabajo con repisa  de 1000 x 600 x 860 mm,
+Mesones de Trabajo,meson-repisa,BAMT-1001,Mesón Abierto de Trabajo con repisa de 1000 x 600 x 860 mm,
+Mesones de Trabajo,meson-repisa,BAMT-1002,Mesón Abierto de Trabajo con repisa de 1000 x 700 x 860 mm,
+Mesones de Trabajo,meson-repisa,BAMT-1003,Mesón Abierto de Trabajo con repisa de 1000 x 800 x 860 mm,
+Mesones de Trabajo,meson-simple,BAMT-1011,Mesón Abierto de Trabajo de 1000 x 800 x 860 mm,
+Mesones de Trabajo,meson-cajones,BAMT-00200,Mesón Cerrado de Trabajo con Repisa de 2000 mm,
+Mesones de Trabajo,meson-simple,BAMT - 1013,Mesón Abierto de Trabajo de 1000 x 800 x 860 mm,
+Mesones de Trabajo,meson-repisa,BAMT-1401,Mesón Abierto de Trabajo con Repisa de 1400 x 600 x 860 mm,
+Mesones de Trabajo,meson-en-proyecto,BAMT-1400,Mesón con Desconche de 1400 x 600 x 860 mm,
+Mesones de Trabajo,meson-simple,BAMT-1012,Mesó Abierto de Trabajo de 1000 x 700 x 860 mm,
+Mesones de Trabajo,meson-cajones,BAMT-0199,Mesón Cerrado de Trabajo con Repisa de 1500 mm,
+Mesones de Trabajo,meson-cajones,BAMT-0197,Mesón Cerrado de Trabajo con Repisa de 1900 mm,
+Mesones de Trabajo,meson-cajones,BAMTC-1300,Mesón Abierto de Trabajo con Repisa de 1300 x 600 x 860 mm,
+Mesones de Trabajo,meson-simple,BAMTP-1100,Mesón Abierto de Trabajo Pintado de 1100 x 650 x 900 mm,
+Mesones de Trabajo,meson-cajones,BAMTCU-1401,Mesón Abierto de Trabajo en Cobre de 1400 x 600 x 860 mm,
+Mesones de Trabajo,meson-en-proyecto,MLRS-1800,Mesón de Lavado con Rack Secador,
+Mesones de Trabajo,meson-simple,MPBK-2030,Mesón de Preparación,
+Mesones de Trabajo,meson-en-proyecto,MCC1,Mueble Clínico,
+Mesones de Trabajo,meson-en-proyecto,MCA-01,Mesa de Acero y Cristal,
+Mesones de Trabajo,meson-en-proyecto,MAE-2500,Módulo de Atención Entrega,
+Mesones de Trabajo,meson-en-proyecto,MQV-1400,Mesón de Procedimientos Veterinarios,
+Mesones de Trabajo,meson-en-proyecto,MTCG-2000,Mesón de Trabajo con Cubierta de Granito,
+Mesones de Trabajo,meson-en-proyecto,MDS-01240,Mesa Desueradora,
+Mesones de Trabajo,meson-en-proyecto,,Basurero para Desconche de 70 LTRS,
+Mesones de Trabajo,meson-en-proyecto,,Basurero con Ruedas para Desconche de 70 LTRS.,
+Mesones de Trabajo,meson-simple,,Mesón de Trabajo,
+Mesones de Trabajo,meson-repisa,,Mesón Abierto de Trabajo con Repisa en Cruz,
+Mesones de Trabajo,meson-repisa,,Mesón con 3 Repisas Abierto,
+Módulo de Autoservicio,modulo-neutro,AUDP-0177,Modulo Pan y Servicio,
+Módulo de Autoservicio,modulo-neutro,AUMN-0900,Módulo Neutro 900mm,
+Módulo de Autoservicio,modulo-neutro,AUMN-1000,Módulo Neutro 1000mm,
+Módulo de Autoservicio,carro-bandejero,AUCB-0178,Carro Bandejero Cap 12 Bandejas,
+Módulo de Autoservicio,carro-bandejero,AUCB-0810,Carro Bandejero Doble Cap 24 Bandejas,
+Módulo de Autoservicio,salad-bar,AUSB-3510,Salad Bar con Gabinete Interior con Panel Acrilico Iluminado,
+Módulo de Autoservicio,salad-bar,DUSB3A,Salad Bar 3 Depósitos Full,
+Módulo de Autoservicio,bano-maria,DUBM3A-G,Baño Maria 3 Depósitos Full a Gas,
+Módulo de Autoservicio,bano-maria,DUBM3A-E,Bño Maria 3 Depósitos Full Eléctrico,
+Módulo de Autoservicio,bano-maria,DUBM6A,Baño Maria 6 Depósitos Full,
+Módulo de Autoservicio,salad-bar,DUSB4A,Salad Bar 4 Depósitos Full,
+Módulo de Autoservicio,bano-maria,DUBM4A-G,Baño Maria 4 Depósitos Full a Gas,
+Módulo de Autoservicio,bano-maria,DUBM4A-E,Baño Maria 4 Depósitos Full Eléctrico,
+Módulo de Autoservicio,accesorio,PIPS-0395AI,Perol de Sopa 10 Litros Inox,
+Módulo de Autoservicio,accesorio,PIPS-0395,Perol de Sopa 10 Litros Negro,
+Módulo de Autoservicio,accesorio,PICP-0450,Calienta Platos,
+Módulo de Autoservicio,meson,MEC-1200,Mesón con Desconche Especial,
+Módulo de Autoservicio,accesorio,RPVCM-1000,Metro Lineal Revestimiento Frontal PVC Madera,
+Muebles refrigerados,freezer,CCVC-0070,Congeladora,IMPORTADO
+Muebles refrigerados,visicooler,CCVC-0273,Conservadora 273 LTS,IMPORTADO
+Muebles refrigerados,refrigerador,FD-020,Máquina para Fabricar Hielo,IMPORTADO
+Muebles refrigerados,vitrina-refrigerada,HW-848,Vitrina Refrigerada de Sobremesa,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MRE-1200,Mesón Refrigerado de 1200MM,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MRE-1500,Mesón Refrigerado de 1500MM,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MRE-1800,Mesón Refrigerado de 1800MM,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MRC-1500,Mesón Refrigerado de 1500MM,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MRU-1200,Mesón Refrigerado de 1200MM,IMPORTADO
+Muebles refrigerados,meson-freezer,MRFREE-1200,Mesón Freezer de 1200MM,IMPORTADO
+Muebles refrigerados,meson-freezer,MRFREE-1500,Mesón Freezer de 1500MM,IMPORTADO
+Muebles refrigerados,meson-refrigerado,M2PC-1370,Mesón Refrigerado 2 Puertas Cristal,IMPORTADO
+Muebles refrigerados,meson-refrigerado,M3PC-1800,Mesón Refrigerado 3 Puertas Cristal,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MR3E-1800,Mesón Refrigerado de 1800MM,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MR6C-1500,Mesón Refrigerado con Cajones de 1500MM,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MR6C-1800,Mesón Refrigerado con Cajones de 1800 MM,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MR4CB-1500,Mesón Refrigerado 4 Cajones,IMPORTADO
+Muebles refrigerados,meson-refrigerado,MR6CB-1800,Mesón Refrigerado 6 Cajones,IMPORTADO
+Muebles refrigerados,visicooler,PIVS-0090,Visicooler Vertical 90 LTS,IMPORTADO
+Muebles refrigerados,visicooler,PIVS-0120,Visicooler Vertical 120 LTS,IMPORTADO
+Muebles refrigerados,visicooler,PIVS-0380,Visicooler Vertical 380 LTS,IMPORTADO
+Muebles refrigerados,visicooler,PIVSB-0380,Visicooler Vertical Blanco 380 LTS,IMPORTADO
+Muebles refrigerados,visicooler,PIVS-1000,Vitrina Vertical Visicooler 1000 LTS,IMPORTADO
+Muebles refrigerados,vitrina-pastelera,PIVE-0682,Vitrina Pastelera de Sobremesa,IMPORTADO
+Muebles refrigerados,refrigerador,RM-0738,Refrigerador Industrial 500 LTS,IMPORTADO
+Muebles refrigerados,refrigerador,RM-1250,Refrigerador Industrial 1000 LTS,IMPORTADO
+Muebles refrigerados,refrigerador,RM-1425,Refrigerador Industrial 1000 LTS,IMPORTADO
+Muebles refrigerados,refrigerador,RMV-0620,Refrigerador Puerta de Cristal 500 LTS,IMPORTADO
+Muebles refrigerados,refrigerador,RMVC-0380,Refrigerador Color Cobre 500 LTS,IMPORTADO
+Muebles refrigerados,refrigerador,RMVG-0380,Refrigerador Color Grafito con Puerta Cristal 500 LTS,IMPORTADO
+Muebles refrigerados,refrigerador,RMV2-0620,Refrigerador 2 Puertas de Cristal 500 LTS,IMPORTADO
+Muebles refrigerados,refrigerador,RCHEE-1200,Refrigerador 2 Puertas de Cristal 900 LTS,IMPORTADO
+Muebles refrigerados,freezer,RFREE-0620,Congelador Industrial con Puerta Cristal 400 LTS,IMPORTADO
+Muebles refrigerados,freezer,RFREE-0738,Congelador Industrial 500 LTS,IMPORTADO
+Muebles refrigerados,freezer,RFREE-1425,Congelador Industrial 1000 LTS,IMPORTADO
+Muebles refrigerados,freezer,RFREEV2-0620,Congelador Industrial 500 LTS,IMPORTADO
+Muebles refrigerados,visicooler,SC-C327,Vitrina Vertical Visicooler 324 LTS,IMPORTADO
+Muebles refrigerados,visicooler,SC-C387,Vitrina Vertical Visicooler 387 LTS,IMPORTADO
+Muebles refrigerados,visicooler,SC-C517,Vitrina Vertical Visicooler 517 LTS,IMPORTADO
+Muebles refrigerados,visicooler,SC-C817,Vitrina Vertical Visicooler 739 LTS,IMPORTADO
+Muebles refrigerados,visicooler,SC-C1127,Vitrina Vertical Visicooler 1123 LTS,IMPORTADO
+Muebles refrigerados,visicooler,SC-C1727,Vitrina Vertical Visicooler 1587 LTS,IMPORTADO
+Muebles refrigerados,vitrina-pastelera,SL830V,Vitrina Pastelera Refrigerada de 900 MM,IMPORTADO
+Muebles refrigerados,vitrina-pastelera,SL840V,Vitrina Pastelera Refrigerada de 1200 MM,IMPORTADO
+Muebles refrigerados,vitrina-pastelera,SL840VC,Vitrina Pastelera Refrigerada Curva de 1200 MM,IMPORTADO
+Muebles refrigerados,vitrina-pastelera,SL850V,Vitrina Pastelera Refrigerada de 1500 MM,IMPORTADO
+Ollas,olla,FO-280260,Olla Acero Inoxidable 16 LTS,
+Ollas,olla,FO-320320,Olla Acero Inoxidable 25 LTS,
+Ollas,olla,FO-360250,Olla Acero Inoxidable 25 LTS,
+Ollas,olla,FO-400260,Olla Acero Inoxidable 32 LTS,
+Ollas,olla,FO-400400,Olla Acero Inoxidable 50 LTS,
+Ollas,olla,FO-450300,Olla Acero Inoxidable 47 LTS,
+Plancha Churrasquera y Baño Maria,plancha-con-bano-maria,PLCHBM,Plancha Churrasquera con Baño Maria,
+Plancha Churrasquera y Baño Maria,plancha-con-lonchera,PLCHLBM,Plancha Churrasquera con Lonchera,
+Plancha Churrasquera y Baño Maria,plancha-con-bano-maria,PLCH2BM,Plancha Churrasquera con Baño Maria Doble,
+Plancha Churrasquera y Baño Maria,plancha-con-bano-maria,PLCHBM-1300,Plancha Churrasquera con Baño Maria,
+Plancha Churrasquera y Baño Maria,plancha-con-bano-maria,PLCHBM-1500,Plancha Churrasquera con Baño Maria,
+Plancha Churrasquera,plancha-gas,PLCH,Plancha Churrasquera 1 Quemador,
+Plancha Churrasquera,plancha-gas,PLCH-1000,Plancha Churrasquera 2 Quemadores,
+Plancha Churrasquera,plancha-gas,PLCH-1100,Plancha Churrasquera 2 Quemadores,
+Plancha Churrasquera,plancha-gas,PLCH1100-P,Plancha Churrasquera 2 Quemadores Especial,
+Plancha Churrasquera,plancha-gas,PLCH-1300,Plancha Churrasquera 3 Quemadores,
+Plancha Churrasquera,plancha-especial,PLCHFA,Plancha Churrasquera Fuente Alemana,
+Plancha Churrasquera,plancha-gas,HGR-906,Plancha Churrasquera,
+Plancha Churrasquera,plancha-electrica,HEG-606,Plancha Churrasquera Eléctrica Encimera,
+Plancha Churrasquera,plancha-electrica,HEG-818/PCE-550,Plancha Churrasquera Eléctrica Encimera,
+Plancha Churrasquera,plancha-electrica,HEG-820/PCE-730,Plancha Churrasquera Eléctrica Encimera,
+Plancha Churrasquera,plancha-electrica,CCCH-0018,Plancha Lisa Eléctrica de Sobremesa,
+Plancha Churrasquera,accesorio,,Enchufe de 16 Amperes,
+Poruñas,poruña-pequeña,POR-0100,Poruña 100 Gramos,
+Poruñas,poruña-mediana,POR-0140,Poruña 140 Gramos,
+Poruñas,poruña-mediana,POR-0170,Poruña 170 Gramos,
+Poruñas,poruña-mediana,POR-0250,Poruña 250 Gramos,
+Poruñas,poruña-mediana,POR-0300,Poruña 300 Gramos,
+Poruñas,poruña-mediana,POR-0340,Poruña 340 Gramos,
+Poruñas,poruña-mediana,POR-0500,Poruña 500 Gramos,
+Poruñas,poruña-mediana,POR-0600,Poruña 600 Gramos,
+Poruñas,poruña-mediana,POR-0750,Poruña 750 Gramos,
+Poruñas,poruña-grande,POR-1000,Poruña 1 Kilo,
+Poruñas,poruña-grande,POR-1500,Poruña 1.5 Kilos,
+Poruñas,poruña-grande,POR-2000,Poruña 2 Kilos,
+Poruñas,poruña-grande,POR-3000,Poruña 3 Kilos,
+Poruñas,poruña-grande,POR-5000,Poruña 5 Kilos,
+Salseras,salsera-simple,SC3,Salsera 3 Depósitos 1/3,IMPORTADO
+Salseras,salsera-simple,SC6,Salsera 6 Depósitos 1/3,IMPORTADO
+Salseras,salsera-grande,SC7,Salsera 7 Depósitos 1/3,IMPORTADO
+Salseras,salsera-grande,SC8,Salsera 8 Depósitos 1/4,IMPORTADO
+Salseras,salsera-grande,SC10,Salsera 10 Depósitos 1/3,IMPORTADO
+Salseras,salsera-grande,SC12,Salsera 12 Depósitos 1/3,IMPORTADO
+Salseras,salsera-pizza,SP18,Salsera Industrial Para Pizza 18 Depósitos Varios,IMPORTADO
+Salseras,salsera-pizza,CFSC-0074,Salsera Industrial Para Pizza 8 Depósitos 1/3,IMPORTADO
+Salseras,salsera-pizza,CFSC-1500,Salsera Industrial 7 Depósitos 1/3,IMPORTADO
+Salseras,salsera-pizza,CFSC-2200,Salsera Industrial 24 Depósitos 1/3,IMPORTADO
+Salseras,salsera-pizza,SCPI1300CA,Salsera Industrial 7 Depósitos 1/3,IMPORTADO
+Tinas Queseras y Más,tina-quesera,EITQ-0100,Tina Quesera 100 LTS,
+Tinas Queseras y Más,tina-quesera,TNQ-0500,Tina Quesera 500LTS,
+Tinas Queseras y Más,molde-queso,MDQ-0245,Molde Queso 5 KG,
+Tinas Queseras y Más,prensa-quesera,PQ2M-0200,Prensa de Queso,
+Tinas Queseras y Más,molde-queso,MDQ-0230,Molde Quesillo 3 KG,
+Tinas Queseras y Más,molde-queso,MDQC-040,Molde Quesillo Cono 40 MM,
+Tinas Queseras y Más,molde-queso,MDQ-020,Molde Quesillo 20 MM,
+Tinas Queseras y Más,molde-queso,MDQ-040,Molde Quesillo 40 MM,
+Tinas Queseras y Más,molde-queso,MDQ-0110,Molde Quesillo 110 MM,
+Tinas Queseras y Más,molde-queso,MDQ-0600,Molde Quesillo 600 GR,
+Tinas Queseras y Más,molde-queso,MDQ-0200,Molde Quesillo 2 KG,
+Tinas Queseras y Más,molde-queso,MDQ-050,Molde Quesillo 50 MM,
+Tinas Queseras y Más,molde-queso,MDQ-0300,Molde Quesillo 300 MM,
+Tinas Queseras y Más,accesorio,LR-100,Lira para Tina 100 LTS,
+Tinas Queseras y Más,accesorio,PL-0850,Paleta Revolvedora,
+Tinas Queseras y Más,molde-queso,MDQ-0370,Molde para Queso 15 KG,
+Tramontina,importado,22969188,Afilador 8 Premium,IMPORTADO
+Tramontina,importado,62624280,Cacerola Honda 280 MM,IMPORTADO
+Tramontina,importado,63813710,Cazo de Sopa 490 MM,IMPORTADO
+Tramontina,importado,2402010,Cuchillo Carnicero 7,IMPORTADO
+Tramontina,importado,24009108,Cuchillo Pan 8,IMPORTADO
+Tramontina,importado,24000103,Cuchillo Legumbres 3,IMPORTADO
+Tramontina,importado,24475188,Cuchillo para Carne Premium 8,IMPORTADO
+Tramontina,importado,24475180,Cuchillo para Carne Premium 10,IMPORTADO
+Tramontina,importado,24625083,Cuchillo Mondador 3,IMPORTADO
+Tramontina,importado,24011108,Cuchillo Cocinero 8,IMPORTADO
+Tramontina,importado,24621082,Cuchillo Carnicero 12,IMPORTADO
+Tramontina,importado,24010104,Cuchillo Cocina 4,IMPORTADO
+Tramontina,importado,63813720,Espumadera Media,IMPORTADO
+Tramontina,importado,62621240,Olla 240 MM,IMPORTADO
+Tramontina,importado,62648280,Olla 280 MM,IMPORTADO
+Tramontina,importado,62633260,Sartén 260 MM,IMPORTADO
+Tramontina,importado,62633300,Sartén 300 MM,IMPORTADO
+Vollrath,cortador,47713,Cortador de Papas Fritas,IMPORTADO
+Vollrath,utensilio,1101,Raspador de Parrilla Mango Extra Largo,IMPORTADO
+Vollrath,cortador,15202,Cortador de Tomates Manual,IMPORTADO
+Vollrath,deposito-gn,1535BRS6-C02,Caja Contenedora de Alimentos,IMPORTADO
+Vollrath,utensilio,20028,Rejilla para Escurrir y Hornear 1/1,IMPORTADO
+Vollrath,utensilio,20029,Rejilla para Escurrir y Hornear 1/2,IMPORTADO
+Vollrath,tapa-accesorio,2208-1354,Botella Dispensadora de Dos Puntas Tapa Morada,IMPORTADO
+Vollrath,tapa-accesorio,2224-1308,Botella Dispensadora de Dos Puntas Tapa Amarilla,IMPORTADO
+Vollrath,tapa-accesorio,26120-13,Botella Dispensadora Tapa Cerrada Estandar,IMPORTADO
+Vollrath,deposito-gn,3101240,Deposito Gastronomico Hexagonal de 1/1,IMPORTADO
+Vollrath,deposito-gn,3102020,Deposito Gastronomico Ovalado de 1/2,IMPORTADO
+Vollrath,tapa-accesorio,3316-13191,Botella Dispensadora de Tri-Punta Tapa Verde,IMPORTADO
+Vollrath,tapa-accesorio,3324-1302,Botella Dispensadora de Tri-Punta Tapa Roja,IMPORTADO
+Vollrath,utensilio,3648,Botella Mezcladora Coctelera de Propileno 1-1/2,IMPORTADO
+Vollrath,utensilio,3664,Botella Mezcladora Coctelera de Propileno 1/2,IMPORTADO
+Vollrath,utensilio,3670,Pala Dispensadora de Papas Fritas,IMPORTADO
+Vollrath,utensilio,46713,Tazon Salsero Acero Inoxidable,IMPORTADO
+Vollrath,utensilio,46891,Poruña de Aluminio 12 oz,IMPORTADO
+Vollrath,utensilio,4689850,Cucharas Solidas Nylon Amarillas,IMPORTADO
+Vollrath,utensilio,46931,Espatula Rascador de Parrilla,IMPORTADO
+Vollrath,utensilio,47003,Batidor de Acero Inoxidable con Mango Morado,IMPORTADO
+Vollrath,utensilio,47091,Batidor de Acero Inoxidable con Mango Verde Claro,IMPORTADO
+Vollrath,cucharas,47146,Cuchara Porcionadora Bolas de Helado 1 oz,IMPORTADO
+Vollrath,utensilio,47165,Pala para Helado,IMPORTADO
+Vollrath,utensilio,47166,Set Colador Gorro Chino,IMPORTADO
+Vollrath,utensilio,47278,Cucharon para Helado,IMPORTADO
+Vollrath,sarten,47755,Sarten de Acero Inoxidable,IMPORTADO
+Vollrath,utensilio,4780911,Pinzas Pack de 3 Unidades,IMPORTADO
+Vollrath,utensilio,47935,Bowl Metal de 298 MM,IMPORTADO
+Vollrath,utensilio,47938,Bowl Metal de 342 MM,IMPORTADO
+Vollrath,utensilio,4808820,Espatula Solida para Voltear,IMPORTADO
+Vollrath,tapa-accesorio,4902-01,Tapa de Botella Dispensadora,IMPORTADO
+Vollrath,tapa-accesorio,4905-191,Tapa Plastica Verde Mediana,IMPORTADO
+Vollrath,tapa-accesorio,4906-32,Tapa Plastica Beige Mediana,IMPORTADO
+Vollrath,tapa-accesorio,4907-08,Tapa Plastica Amarilla Grande,IMPORTADO
+Vollrath,tapa-accesorio,4908-01,Tapa Plastica Negra Boca Ancha Grande,IMPORTADO
+Vollrath,utensilio,4980810,Cucharon Gancho Acanalado 8 oz,IMPORTADO
+Vollrath,utensilio,4981220,Cucharon Gancho Acanalado Antimicrobial 12 oz,IMPORTADO
+Vollrath,utensilio,5200311,Tabla de Cortar o Picar Multicolor,IMPORTADO
+Vollrath,utensilio,52010,Espatula Tipo Cuchara Flexible,IMPORTADO
+Vollrath,dispensador,52063,Botella Dispensadora de una Punta Plastico Transparente,IMPORTADO
+Vollrath,dispensador,52064,Botella Dispensadora de una Punta Plastico Rojo,IMPORTADO
+Vollrath,dispensador,52065,Botella Dispensadora de una Punta Plastico Amarillo,IMPORTADO
+Vollrath,utensilio,52109,Espatula Termoplastica,IMPORTADO
+Vollrath,deposito-gn,52618,Caja Contenedora con Canasto de Drenaje Interior,IMPORTADO
+Vollrath,cucharas,5283520,Cuchara Porcionadora Tazon Redondo Solido,IMPORTADO
+Vollrath,cucharas,5283621,Cuchara Porcionadora Tazon Redondo Perforado,IMPORTADO
+Vollrath,cucharas,5292620,Cuchara Porcionadora Tazon Ovalado Solido,IMPORTADO
+Vollrath,cucharas,5292720,Cuchara Porcionadora Tazon Ovalado Perdorado,IMPORTADO
+Vollrath,utensilio,4808921,Espatula Perforada para Voltear,IMPORTADO
+Vollrath,bandeja,5315,Bandeja de Aluminio,IMPORTADO
+Vollrath,utensilio,533-06,Tazon Salsera Plastico Negro,IMPORTADO
+Vollrath,sarten,58910,Sarten de Acero al Carbono,IMPORTADO
+Vollrath,cucharas,62175,Cuchara Porcionador Tazon Redondo Perforado,IMPORTADO
+Vollrath,cucharas,62177,Cuchara Porcionadora Tazon Redondo Solido,IMPORTADO
+Vollrath,tapa-accesorio,62303,Cubierta o Tapa para Platos 239mm,IMPORTADO
+Vollrath,tapa-accesorio,62340,Cubierta o Tapa para Platos 220mm,IMPORTADO
+Vollrath,cucharas,6412335,Cuchara Porcionadora Tazon Ovalado Solido Mango Blanco,IMPORTADO
+Vollrath,utensilio,64130,Cuchara Solida Mango Ergonomico Negro,IMPORTADO
+Vollrath,utensilio,64132,Cuchara Perforada Mango Ergonomico Negro,IMPORTADO
+Vollrath,cucharas,6422335,Cuchara Porcionadora Tazon Ovalado Mango Blanco,IMPORTADO
+Vollrath,cucharas,6432120,Cuchara Porcionadora Tazon Redondo Mango Negro,IMPORTADO
+Vollrath,cucharas,6433121,Cuchara Porcionadora Tazon Redondo Solido Mango Negro,IMPORTADO
+Vollrath,bandeja,68100,Bandeja para Hornear Galletas,IMPORTADO
+Vollrath,utensilio,68183,Agitador de Aluminio con Mango,IMPORTADO
+Vollrath,sarten,69210,Sarten de Acero Inoxidable 254mm Diametro Mango Perforado,IMPORTADO
+Vollrath,sarten,7010,Sarten Aluminio 254mm Diametro,IMPORTADO
+Vollrath,accesorio,72681019,Lampara de Calor Aluminio,IMPORTADO
+Vollrath,deposito-gn,8006410,Deposito Plastico Resistente 1/1 Policarbonato,IMPORTADO
+Vollrath,deposito-gn,8034410,Deposito Plastico Resistente 1/3 Policarbonato,IMPORTADO
+Vollrath,deposito-gn,8034420,Deposito Plastico Resistente 1/3 Policarbonato Negro,IMPORTADO
+Vollrath,cortador,808SG,Cortador de Frutas y Vegetales 8 Secciones,IMPORTADO
+Vollrath,deposito-gn,90023,Deposito Gastronomico con Esquinas Concavas 1/1x65mm,IMPORTADO
+Vollrath,deposito-gn,90052,Deposito Gastronomico con Esquinas Concavas 1/1x60mm,IMPORTADO
+Vollrath,deposito-gn,9006410,Deposito Plastico Resistente de Resina de Ambar,IMPORTADO
+Vollrath,deposito-gn,90252,Deposito Gastronomico con Esquinas Concavas 1/2x60mm,IMPORTADO
+Vollrath,deposito-gn,90352,Deposito Gastronomico con Esquinas Concavas 1/3x60mm,IMPORTADO
+Vollrath,deposito-gn,90642,Deposito Gastronomico con Esquinas Concavas 1/6x100mm,IMPORTADO
+Vollrath,deposito-gn,90942,Deposito Gastronomico con Esquinas Concavas 1/9x100mm,IMPORTADO
+Vollrath,tapa-accesorio,918-13,Cubierta o Tapa para Platos de Policarbonato Transparente,IMPORTADO
+Vollrath,utensilio,BCO-6000,Abridor de Latas,IMPORTADO
+Vollrath,vitrina-encimera,LBC1418-3F-06,Vitrina Encimera para Pasteles 3 Compartimientos,IMPORTADO
+Accesorios para Personas con Capacidades Diferentes,en-l,BRA-01200,Barra en L 600X600,IMPORTADO
+Accesorios para Personas con Capacidades Diferentes,en-angulo,BRA-0130,Barra Ángulo 130°,IMPORTADO
+Accesorios para Personas con Capacidades Diferentes,recta,BRA-0300,Barra de Apoyo 300MM,IMPORTADO
+Accesorios para Personas con Capacidades Diferentes,recta,BRA-0450,Barra de Apoyo 450MM,IMPORTADO
+Accesorios para Personas con Capacidades Diferentes,recta,BRA-0600,Barra de Apoyo 600MM,IMPORTADO
+Accesorios para Personas con Capacidades Diferentes,recta,BRA-0800,Barra de Apoyo 800MM,IMPORTADO
+Accesorios para Personas con Capacidades Diferentes,abatible,BRA-0610,Barra Abatible 610MM,IMPORTADO
+Accesorios para Personas con Capacidades Diferentes,doble,BRA-0790,Barra de Apoyo Doble a Muro 600MM,IMPORTADO
+Accesorios para Personas con Capacidades Diferentes,en-proyecto,PAD-0900,Puerta de Acceso Universal,IMPORTADO
+Baldes,balde,BLDS-180,Balde de 5Lts,
+Baldes,balde,BLDS-190,Balde de 7Lts,
+Baldes,balde,BLDS-230,Balde de 10Lts,
+Baldes,balde,BLDS-240,Balde de 12Lts,
+Baldes,balde,BLDS-380,Balde de 14Lts,
+Baldes,balde,BLDS-270,Balde de 15Lts,
+Baldes,balde,BLDS-300,Balde de 20Lts,
+Baldes,balde,BLDS-350,Balde de 30Lts,
+Baldes,balde,BLDS-400,Balde de 40Lts,
+Bandejas Pasa Valores,bandeja-pasavalores,BANPSVC-00300,Bandeja Pasa Valores 300,
+Bandejas Pasa Valores,bandeja-pasavalores,BANPSVC-00260,Bandeja Pasa Valores 260,
+Bandejas Pasa Valores,bandeja-pasavalores,BANPSVC-00150,Bandeja Pasa Valores 200,
+Baranda y Pasamanos,hardware-accesorio,CC104,Toma Cristal 50MM,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC119-254,Tapa para Tubo 25.4MM,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC119-318,Tapa para Tubo 31.8MM,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC119-508,Tapa para Tubo 50.8MM,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC147,Soporte para Vidrio 8-10MM,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC148,Separador de Cristal 25MM,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC11,Soporte Muro Pasamanos,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC15,Soporte Pasamanos 1/2,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC151,Flanche para Tubo 50.8MM,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC6,Espiga para Vidrios,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CCS6,Perno Anclaje Espiga para Vidrio,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,CC97,Roseta Cubre Base para Tubo 50.8MM,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,DD-004,Balaustro Doble Lado,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,DD-004S,Balaustro a un Lado,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,DD-138,Balaustro Vidrio,IMPORTADO
+Baranda y Pasamanos,hardware-accesorio,DD-181,Balaustro 4 Barras,IMPORTADO
+Baranda y Pasamanos,guia,GUC-01000,Protecciones Bajas,IMPORTADO
+Baranda y Pasamanos,puerta-acceso,PU-0015,Módulo Puerta Unidireccional,IMPORTADO
+Basureros,basurero-especial,BABTRA-0440,Basurero Anti-Vandálico,
+Basureros,basurero-simple,BACON-0410,Basurero Modelo Cónico,
+Basureros,basurero-simple,BAMU-0600,Basurero Modelo Mural,
+Basureros,basurero-con-mecanismo,BANI-0350,Basurero Modelo Nido,
+Basureros,basurero-especial,BAPLA-0470,Basurero Modelo Plaza,
+Basureros,basurero-especial,BAPRO-0500,Basurero Modelo Providencia,
+Basureros,basurero-reciclaje,BARE-0600,Basurero Reciclaje,
+Basureros,basurero-reciclaje,BARE-0955,Basurero Reciclaje Bicolor,
+Basureros,basurero-reciclaje,BARE-0960,Basurero Reciclaje,
+Basureros,basurero-reciclaje,BARE4-01300,Basurero Reciclaje con 4 Compartimientos,
+Basureros,basurero-reciclaje,BARE5-01500,Basurero Recilaje con 5 Compartimientos,
+Basureros,basurero-reciclaje,BAREE-0320,Módulo de Reciclaje para Oficinas,
+Basureros,basurero-reciclaje,BAREN-01300,Contenedor para Reciclaje,
+Basureros,basurero-reciclaje,BARSV-01230,Basurero Reciclaje con 3 Compartimientos,
+Basureros,basurero-especial,BASTR-0500,Basurero Modelo RedBus,
+Basureros,basurero-especial,BASTR-0600,Basurero RedBus Pivotante,
+Basureros,basurero-con-mecanismo,BATP-0300,Basurero Rectangular 50Lts,
+Basureros,basurero-con-mecanismo,BATYPR-0225,Basurero 225MM,
+Basureros,basurero-con-mecanismo,BATYPR-0300,Basurero 300MM,
+Basureros,basurero-con-mecanismo,BATYPR-0650,Basurero 650MM,
+Basureros,basurero-con-mecanismo,BATYPR-0601,Basurero 601MM,
+Basureros,basurero-con-mecanismo,BATYPR-0801,Basurero 800MM,
+Basureros,basurero-con-mecanismo,BATYPR-0100,Basurero 100,
+Basureros,basurero-con-mecanismo,BAVAD-0500,Basurero Tapa Vaivén Doble,
+Basureros,basurero-especial,BM-0700,Basurero Mall Simple,
+Basureros,basurero-especial,BMD-1300,Basurero Mall Doble,
+Basureros,basurero-especial,BMPE-0250,Basurero Mural para Empotrar,
+Basureros,basurero-reciclaje,BRDB-620,Basurero Domestic Transparente,
+Basureros,basurero-reciclaje,BRDT-620,Basurero Domestic Bin,
+Basureros,basurero-reciclaje,BRPA-0500,Basurero Reciclaje Puerta Abatible,
+Basureros,basurero-simple,CEN-0650,Basurero Cenicero,
+Basureros,importado,BCPT-103,Basurero 3Lts Tramontina,IMPORTADO
+Basureros,importado,BCPT-105,Basurero 5Lts Tramontina,IMPORTADO
+Basureros,importado,BCPT-112,Basurero 12Lts Tramontina,IMPORTADO
+Basureros,importado,BCPT-120,Basurero 20Lts Tramontina,IMPORTADO
+Basureros,importado,BAFOG-0700,Mueble para Basurero (FOOD GARDEN),IMPORTADO
+Basureros,importado,BCPT-130,Basurero 30Lts Tramontina,IMPORTADO
+Basureros,importado,BCCT-111,Basurero Cenicero Tramontina,IMPORTADO
+Basureros,basurero-reciclaje,BRET-0960,Basurero Recilaje con 3 Divisiones,
+Basureros,basurero-simple,BEMT-008,Basurero de Empotrar,
+Basureros,basurero-con-mecanismo,BCTV-040,Basurero Tapa Vaivén Tramontina,
+Basureros,basurero-simple,BDS-0400,Basurero Sin Ruedas Bajo Mesón,
+Basureros,basurero-simple,BDC-0400,Basurero Con Ruedas Bajo Mesón,
+Basureros,basurero-especial,MES-400,Basurero Exterior By Tramontina,
+Basureros,basurero-especial,MOD-500,Basurero Exterior By Tramontina,
+Basureros,basurero-con-mecanismo,TRASH BIN RING,Anillo de 245 MM,
+Bicicleteros,bicicletero-standard,BCN-01400,Bicicletero Enns,
+Bicicleteros,bicicletero-standard,BCN-0600,Bicicletero Linz (Individual),
+Bicicleteros,bicicletero-standard,BCN-02000,Bicicletero Wels,
+Bicicleteros,bicicletero-standard,BCN-01500,Bicicletero Graz,
+Bicicleteros,bicicletero-standard,BCN-01600,Bicicletero Tirol,
+Bicicleteros,bicicletero-standard,BCN-01350,Bicicletero Vienna,
+Buzón,buzon,BAI-300,Buzón 360MM,
+Buzón,buzon,BAI-350,Buzón 350MM,
+Buzón,buzon,BEAI-105,Buzón Especial 105MM,
+Equipo Industrial,lavabotas,LB-0500,Lavabotas de Acero Inoxidable,
+Equipo Industrial,marmita,,Marmita Especial con Anafe y Termostato,
+Escalera Piscina,escalera-piscina,EPPC-1940,Escalera para Piscina,
+Mudador,especial,,Receptáculo para Mudador,
+Números y Letras,numero,,Números Armados 150-230MM,
+Números y Letras,numero,,Números Armados 240-270MM,
+Números y Letras,numero,,Números Armados 280-350MM,
+Números y Letras,numero,,Números Armados 360-440MM,
+Números y Letras,numero,,Números Armados 450-560MM,
+Números y Letras,letra,,Letras Armadas 150MM,
+Números y Letras,letra,,Letras Armadas 350MM,
+Números y Letras,letra,,Letras Armadas 960MM,
+Peinazo,peinazo,PZ-8503,Peinazo 850X300MM,
+Peinazo,peinazo,PZ-8504,Peinazo 850X400MM,
+Peinazo,peinazo,PZ-9003,Peinazo 900X300MM,
+Protección Escaleras,proteccion-escalera,PEDF-1000,Protección Escala Mecánica,
+Protección Escaleras,proteccion-escalera,PEDL-0800,Protección Escala Mecánica,
+Protector Anti-Skate,anti-skate,ANS-001,Protector Anti-Skate,
+Sillas,silla,SL-02,Silla de Acero Inoxidable N°2,
+Sillas,banca,BTCP-2960,Banqueta con 5 Asientos,
+Sillas,banca,REDBUS,Banca Transantiago 4 Puestos,
+Sillas,silla,SL-01,Silla de Acero Inoxidable N°1,
+Soporte Extintor,soporte-extintor,SPE-001,Soporte Extintor Diseño 1,
+Soporte Extintor,soporte-extintor,SPE-002,Soporte Extintor Diseño 2,
+Soporte Extintor,gabinete-extintor,INC-0700,Gabinete Equipamiento Anti-Incendios,
+Sumideros,sumidero-tapa,SUMVE-0300,Sumidero con Tapa Perforada 300,
+Sumideros,sumidero-tapa,SUMVE-0400,Sumidero con Tapa Perforada 400,
+Sumideros,sumidero-rejilla,SUMHO-0200,Sumidero con Rejilla,
+Sumideros,canaleta,REJCN-0300,Canaleta con Rejilla,
+Sumideros,canaleta,REJCN-0200,Canaleta con Rejilla,
+Sumideros,sumidero-tapa,,Sumidero con Tapa Perforada 500,
+Urinarios,urinario,UR-2470,Urinario 1000X700,
+Urinarios,urinario,UR-2480,Urinario 800X1000,
+Urinarios,urinario,UR-2410,Urinario 1000X1000,
+Urinarios,urinario,UR-2412,Urinario 1000X1200,
+Urinarios,urinario,UR-1000,Urinario 1000X700,
+Urinarios,urinario,UR-3016,Urinario 1000X1600,
+Zócalos,zocalo,,Zócalo 100 de Alto con Espesor de 1MM,
+Zócalos,zocalo,,Zócalo 150 de Alto con Espesor de 1.5MM,
+Zócalos,zocalo,,Zócalo 150 de Alto con Espesor de 1MM,
+Zócalos,zocalo,,Zócalo 80 de Alto con Espesor de 1MM,
