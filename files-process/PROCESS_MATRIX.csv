@@ -1,0 +1,28 @@
+tipo,producto,subfamilia,anchor_ref,driver_escala,factor_escala,G,D,C,X,flags_X,trazado,corte_manual,corte_laser,plegado,cilindrado,soldadura,pulido,qc,notas
+ANCHOR,Cubrejunta,cubrejunta,,metros_lineales,1.00,1,1,1,0,,C1,C1,SKIP,C1,SKIP,SKIP,C1,C1,Sin soldadura — costo HH mínimo del catálogo. Ref: 2400mm × 50mm × 1mm
+EXTRAPOL,Peinazo,peinazo,Cubrejunta,metros_lineales,?,1,1,1,0,,C1,C1,SKIP,C1,SKIP,SKIP,C1,C1,Mismo perfil — escalar por longitud
+EXTRAPOL,Tapa Registro,tapa-registro,Cubrejunta,area_planta_mm2,?,1,1,1,0,,C1,C1,SKIP,SKIP,SKIP,C1,C1,C1,Sin plegado — solo marco soldado. Driver cambia a área
+EXTRAPOL,Bandeja Pasavalores,bandeja-pasavalores,Cubrejunta,area_planta_mm2,?,1,1,1,0,,C1,C1,SKIP,C1,SKIP,SKIP,C1,C1,Pestaña perimetral simple — mismo perfil. Ref: 300×150×50mm
+ANCHOR,Meson Simple,meson-simple,,metros_largos,1.00,1,1,2,0,,C1,C1,SKIP,C2,SKIP,C1,C2,C1,Anchor para familia p-meson (87 productos). Ref: 900×600×860mm 1mm. Reemplaza Moldura como anchor principal
+EXTRAPOL,Meson Repisa,meson-repisa,Meson Simple,metros_largos,?,1,1,2,0,,C1,C1,SKIP,C2,SKIP,C1,C2,C1,Repisa inferior — mismo perfil. Ref: 1900mm largo
+EXTRAPOL,Meson Cajones,meson-cajones,Meson Simple,metros_largos,?,1,1,3,0,,C1,C1,SKIP,C2,SKIP,C2,C2,C1,Puertas/cajones suman C (8+ piezas → C=3). Soldadura sube C2
+EXTRAPOL,Estanteria,estanteria-lisa,Meson Simple,metros_largos,?,1,1,2,0,,C1,C1,SKIP,C2,SKIP,C1,C1,C1,Repisas lisas sin taza — pulido C1. Mismo largo base
+ANCHOR,Sumidero,liviano,,area_planta_mm2,1.00,1,1,2,0,,C1,C1,C1,C1,SKIP,C1,C1,C1,4 esquinas soldadas. Tapa laser perforada. Ref: 400×400×400mm esp 3mm tapa / 1.5mm body
+EXTRAPOL,Canaleta,canaleta,Sumidero,metros_lineales,?,1,1,2,0,,C1,C1,C1,C1,SKIP,C1,C1,C1,Mismo proceso — driver escala cambia a largo lineal
+EXTRAPOL,Sumidero Pequeño,liviano,Sumidero,area_planta_mm2,?,1,1,2,0,,C1,C1,C1,C1,SKIP,C1,C1,C1,Mismo perfil — escalar por área. Ref: 200×200×200mm
+ANCHOR,Poruña,accesorio-simple,,capacidad_litros,1.00,1,1,1,0,,C1,C1,SKIP,SKIP,C1,C1,C1,C1,Cilindrado C1 — anchor base para familia p-cilindrico. Ref: 205mm largo 50mm pala 1mm
+EXTRAPOL,Balde,balde,Poruña,capacidad_litros,?,1,1,1,0,,C1,C1,SKIP,SKIP,C1,C1,C1,C1,Mayor diámetro — mismo proceso. Ref: 180mm diam × 230mm alto 5L
+EXTRAPOL,Escurridor,accesorio-simple,Poruña,capacidad_litros,?,1,1,1,0,,C1,C1,SKIP,SKIP,C1,C1,C1,C1,Cilíndrico pequeño — mismo perfil. Ref: 105mm diam × 130mm alto
+EXTRAPOL,Tina Quesera,tina-quesera,Poruña,capacidad_litros,?,1,1,2,0,,C1,C1,SKIP,SKIP,C1,C1,C1,C1,Cilíndrico con tapa — C=2. Escalar por capacidad litros
+ANCHOR,Campana Mural,campana-mural,,metros_largos,1.00,2,1,2,2,acabado_especial,C2,C1,C1,C2,SKIP,C2,C2,C1,Primer anchor con procesos dominantes C2. Ref: 1500×1000×400mm 1mm. X=2 acabado_especial
+EXTRAPOL,Campana Central,campana-central,Campana Mural,metros_largos,?,2,1,2,2,acabado_especial,C2,C1,C1,C2,SKIP,C2,C2,C1,Mismo perfil — ancho referencia. Ref: 2000×1300×400mm 1.5mm
+EXTRAPOL,Campana Grande,campana-mural,Campana Mural,metros_largos,?,2,1,2,2,acabado_especial,C2,C1,C1,C2,SKIP,C2,C2,C1,Escalar por largo. Ref: 3000×1000×400mm
+ANCHOR,Celosia,celosia,,area_panel_m2,1.00,2,1,3,2,multiples_uniones,C1,C2,SKIP,SKIP,SKIP,C3,C2,C1,Soldadura C3 — 9 varillas / muchos puntos de unión. Ref: 900×600mm 1mm 9 varillas. X=2 multiples_uniones
+EXTRAPOL,Proteccion Escalera,proteccion-escalera,Celosia,area_panel_m2,?,2,1,3,2,multiples_uniones,C1,C2,SKIP,C1,SKIP,C3,C2,C1,Marco plegado adicional — plegado C1. Ref: 500×200×800mm 1mm
+EXTRAPOL,Escalera Piscina,escalera-piscina,Celosia,area_panel_m2,?,2,1,3,2,multiples_uniones,C1,C2,SKIP,SKIP,C1,C3,C2,C1,Estructura tubular + cilindrado. Sin plegado plancha.
+ANCHOR,Basurero Rect,basurero-simple,,capacidad_litros,1.00,1,1,2,2,acabado_especial,C1,C1,C1,C2,SKIP,C2,C3,C1,Pulido C3 ANCLA-ONLY (3 pasadas). Ref: 500×350×750mm 1mm rect. X=2 acabado_especial
+EXTRAPOL,Basurero Modelo Plaza,basurero-especial,Basurero Rect,capacidad_litros,?,1,1,2,2,acabado_especial,C1,C1,C1,C2,SKIP,C2,C3,C1,Misma caja rect con pilar — escalar por capacidad. Ref: 470×240×1020mm 1mm
+EXTRAPOL,Basurero Modelo Providencia,basurero-especial,Basurero Rect,capacidad_litros,?,1,1,2,2,acabado_especial,C1,C1,C1,C2,SKIP,C2,C3,C1,Receptor interior + sistema vaivén. Ref: 500×200×600mm 1mm
+PHASE2,Carro Bandejero,carro-bandejero,,metros_largos,?,2,1,3,0,,C1,C1,SKIP,C2,C1,C2,C1,C1,PENDIENTE MEDICIÓN. 39 productos sin anchor. Tubos cilindrados + paneles plegados. Ref: 640×650×2000mm
+PHASE2,Basurero Cilindrico,basurero-con-mecanismo,,capacidad_litros,?,1,1,2,2,acabado_especial,C1,C1,C1,SKIP,C2,C2,C3,C2,PENDIENTE MEDICIÓN. 33 productos sin anchor propio. Forma cilíndrica — plegado SKIP cilindrado activo. Ref: D=400mm × H=800mm 1mm
+PHASE2,Lavadero Simple,lavadero-simple,,area_planta_mm2,?,1,1,2,0,,C1,C1,SKIP,C2,SKIP,C2,C2,C1,PENDIENTE MEDICIÓN. 11 productos sin anchor. Similar a meson pero con taza y desagüe.
