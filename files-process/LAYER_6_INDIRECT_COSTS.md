@@ -42,12 +42,16 @@ Costs related to the **factory / production floor** not directly attributed to o
 | Maintenance & repairs   | Per machine-hr    |                   |                  |
 | Consumables (general)   | Per labor-hr      |                   |                  |
 | Safety equipment        | Per labor-hr      |                   |                  |
+| Total MOH 
+
 
 ### A2. MOH Allocation Calculation
 
 **Method 1 — Machine Hour Rate:**
 ```
-MOH Rate (machine) = Total MOH / Total Machine Hours Available
+MOH Rate (machine) = Total MOH / Total Machine Hours Available (Total Machine Hours Available =
+# Machines × Hours per day × Working days per month × Utilization %)
+
 MOH Charge = MOH Rate × Product Machine Hours
 ```
 
