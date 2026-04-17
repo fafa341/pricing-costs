@@ -1,271 +1,233 @@
 """
 audit_model.py — Dulox Model Coherence Auditor
-=================================================
+================================================
 Tests whether the G/D/C/X driver system produces scores that are
 mathematically consistent with assigned complexity levels (C1/C2/C3).
 
-Usage:
-  python3 files-process/audit_model.py [--test drivers|anchors|extrapolation|full]
-  python3 files-process/audit_model.py --test full --save
+Key principle: Each perfil_proceso has DECLARED primary drivers.
+We only test the drivers that are DECLARED primary for each profile.
+If the primary driver isn't in the DB → "not testeable" (not a contradiction).
 
-Output:
-  Console report + optional save to files-process/process-measurements/audit-reports/
+Usage:
+  python3 scripts/audit_model.py                        # full audit
+  python3 scripts/audit_model.py --test drivers
+  python3 scripts/audit_model.py --test cohesion
+  python3 scripts/audit_model.py --test outliers
+  python3 scripts/audit_model.py --save
 """
 
+import sqlite3
 import pandas as pd
 import numpy as np
-import json
 import argparse
-import sys
+import json
 from pathlib import Path
 from datetime import date
-from collections import defaultdict
+from scipy.stats import spearmanr, f_oneway, mannwhitneyu
 
-# ─── Paths ────────────────────────────────────────────────────────────────────
-ROOT = Path(__file__).resolve().parent.parent
-CSV  = ROOT / "dataset" / "Productos_Clasificaciones.csv"
-MATRIX = ROOT / "files-process" / "PROCESS_MATRIX.csv"
-CHUNKS = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
+ROOT      = Path(__file__).resolve().parent.parent
+DB        = ROOT / "dataset" / "products.db"
+CHUNKS    = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
 AUDIT_LOG = ROOT / "files-process" / "process-measurements" / "AUDIT_LOG.md"
 AUDIT_DIR = ROOT / "files-process" / "process-measurements" / "audit-reports"
 
-# ─── Driver computation ────────────────────────────────────────────────────────
+# ─── Declared primary drivers per perfil_proceso ──────────────────────────────
+#
+# Format: list of (driver_col, driver_name, available_in_db)
+# available_in_db = True if the column exists and is populated; False = gap
+#
+# G = geometry (area L×W)      — available as column G in DB
+# D = density (espesor)        — available as column D in DB
+# C = components (count)       — NOT in DB yet (num_componentes etc.)
+# X = characteristics (flags)  — NOT in DB yet
 
-def compute_G(row):
-    """Geometry score: area de planta (L × W) en mm²"""
-    l = pd.to_numeric(row.get('dim_l_mm'), errors='coerce')
-    w = pd.to_numeric(row.get('dim_w_mm'), errors='coerce')
-    if pd.isna(l) or pd.isna(w) or l <= 0 or w <= 0:
-        return np.nan
-    area = l * w
-    if area < 500_000:   return 1
-    if area < 1_500_000: return 2
-    return 3
+PROFILE_DRIVERS = {
+    # perfil           primary drivers       notes
+    "p-meson":          [("G","G",True), ("C","C",False)],   # C drives cajones complexity
+    "p-modulo":         [("G","G",True), ("X","X",False)],
+    "p-laminar-simple": [("G","G",True)],
+    "p-cocina-gas":     [("C","C",False)],                    # quemadores count
+    "p-cilindrico":     [("D","D",True), ("G","G",True)],
+    "p-basurero-rect":  [("G","G",True), ("X","X",False)],
+    "p-basurero-cil":   [("D","D",True), ("G","G",True), ("X","X",False)],
+    "p-carro-bandejero":[("C","C",False), ("G","G",True)],    # niveles count
+    "p-carro-traslado": [("G","G",True), ("C","C",False)],
+    "p-sumidero":       [("G","G",True)],
+    "p-lavadero":       [("C","C",False), ("G","G",True)],    # tazas count
+    "p-laser":          [("X","X",False), ("D","D",True)],
+    "p-electrico":      [("C","C",False), ("G","G",True)],
+    "p-campana":        [("G","G",True)],
+    "p-refrigerado":    [("C","C",False)],
+    "p-rejilla":        [("C","C",False), ("G","G",True)],
+    "p-tina":           [("C","C",False), ("G","G",True)],
+    "p-custom":         [("G","G",True), ("C","C",False)],
+}
 
-def compute_D(row):
-    """Density score: espesor de lámina en mm"""
-    e = pd.to_numeric(row.get('dim_espesor_mm'), errors='coerce')
-    if pd.isna(e) or e <= 0: return np.nan
-    if e <= 1.5: return 1
-    if e <= 2.0: return 2
-    return 3
+# Profiles where G alone is NOT the primary driver
+# (G inversions in these are EXPECTED — don't flag as contradiction)
+G_NOT_PRIMARY = {"p-meson", "p-cocina-gas", "p-carro-bandejero",
+                 "p-lavadero", "p-electrico", "p-refrigerado",
+                 "p-rejilla", "p-tina", "p-custom"}
 
-def compute_area_mm2(row):
-    l = pd.to_numeric(row.get('dim_l_mm'), errors='coerce')
-    w = pd.to_numeric(row.get('dim_w_mm'), errors='coerce')
-    if pd.isna(l) or pd.isna(w): return np.nan
-    return l * w
+# ─── Load data ────────────────────────────────────────────────────────────────
 
-def complexity_num(k):
-    """C1→1, C2→2, C3→3"""
-    return {'C1': 1, 'C2': 2, 'C3': 3}.get(str(k), np.nan)
+def load_db():
+    conn = sqlite3.connect(DB)
+    df = pd.read_sql("""
+        SELECT handle, perfil_proceso, complejidad, k_num,
+               G, D, dim_l_mm, dim_w_mm, dim_espesor_mm,
+               familia, subfamilia, descripcion_web, validated
+        FROM products
+        WHERE perfil_proceso != 'p-importado'
+    """, conn)
+    conn.close()
+    return df
 
-def product_vector(row):
+# ─── TEST 1: Declared-driver coherence ───────────────────────────────────────
+
+def test_drivers(df, verbose=True):
     """
-    4-dimensional normalized product vector.
-    Used for anchor quality and extrapolation coherence tests.
+    For each profile, test ONLY the drivers declared as primary.
+    Distinguishes:
+      ✅ COHERENTE    — declared driver correlates with complexity
+      ⚠️  MIXTO       — partial evidence (low n or p>0.10)
+      ❌ CONTRADICCIÓN — declared driver INVERTS against complexity
+      🔲 NO TESTEABLE — primary driver not in DB (gap, not contradiction)
     """
-    G = compute_G(row)
-    D = compute_D(row)
-    area = compute_area_mm2(row)
-    espesor = pd.to_numeric(row.get('dim_espesor_mm'), errors='coerce')
-
-    return np.array([
-        G / 3 if not pd.isna(G) else 0,
-        D / 3 if not pd.isna(D) else 0,
-        min(area / 1_500_000, 1.0) if not pd.isna(area) and area > 0 else 0,
-        min(espesor / 10, 1.0) if not pd.isna(espesor) and espesor > 0 else 0,
-    ])
-
-def euclidean(v1, v2):
-    return float(np.sqrt(np.sum((v1 - v2) ** 2)))
-
-# ─── Load data ─────────────────────────────────────────────────────────────────
-
-def load_data():
-    df = pd.read_csv(CSV, low_memory=False)
-    fab = df[df['importado_final'] == 'NO'].copy()
-    fab['G']       = fab.apply(compute_G, axis=1)
-    fab['D']       = fab.apply(compute_D, axis=1)
-    fab['area_mm2']= fab.apply(compute_area_mm2, axis=1)
-    fab['k_num']   = fab['complejidad'].map(complexity_num)
-    fab['vec']     = fab.apply(product_vector, axis=1)
-    return fab
-
-def load_matrix():
-    try:
-        return pd.read_csv(MATRIX)
-    except FileNotFoundError:
-        return pd.DataFrame()
-
-def load_chunks():
-    chunks = []
-    if CHUNKS.exists():
-        for line in CHUNKS.read_text().splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    chunks.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-    return chunks
-
-# ─── TEST 1: Driver coherence ──────────────────────────────────────────────────
-
-def test_drivers(fab, verbose=True):
-    """
-    Test whether G/D scores increase monotonically with complexity C1→C2→C3
-    within each perfil_proceso.
-    """
+    lines = ["", "="*65,
+             "TEST 1 — COHERENCIA DE DRIVERS DECLARADOS × COMPLEJIDAD",
+             "="*65]
     results = {}
-    lines = ["", "=" * 65, "TEST 1 — COHERENCIA DE DRIVERS G/D × COMPLEJIDAD", "=" * 65]
 
-    # Profiles with enough data
-    profile_counts = fab.groupby(['perfil_proceso', 'complejidad']).size().unstack(fill_value=0)
+    perfiles = [p for p in sorted(df["perfil_proceso"].unique())
+                if p in PROFILE_DRIVERS and p != "p-importado"]
 
-    for perfil in sorted(fab['perfil_proceso'].unique()):
-        grp = fab[fab['perfil_proceso'] == perfil]
+    for perfil in perfiles:
+        grp = df[df["perfil_proceso"] == perfil].copy()
         n_total = len(grp)
-
-        # Skip profiles with very few products
         if n_total < 3:
             continue
 
-        levels_present = [k for k in ['C1', 'C2', 'C3'] if k in grp['complejidad'].values]
-        if len(levels_present) < 2:
+        levels = sorted(grp["complejidad"].dropna().unique(),
+                        key=lambda k: {"C1":1,"C2":2,"C3":3}.get(k, 99))
+        if len(levels) < 2:
             continue
 
-        # Compute mean G per level (where data exists)
-        g_means = {}
-        d_means = {}
-        for k in levels_present:
-            sub = grp[grp['complejidad'] == k]
-            g_vals = sub['G'].dropna()
-            d_vals = sub['D'].dropna()
-            g_means[k] = (g_vals.mean(), len(g_vals))
-            d_means[k] = (d_vals.mean(), len(d_vals))
+        declared = PROFILE_DRIVERS[perfil]
+        driver_results = []
+        testeable_drivers = []
+        gap_drivers = []
 
-        # Monotonicity check
-        def is_monotone(means_dict, levels):
-            vals = [means_dict[k][0] for k in levels if not pd.isna(means_dict[k][0])]
-            if len(vals) < 2: return None
-            return all(vals[i] <= vals[i+1] for i in range(len(vals)-1))
+        for col, name, available in declared:
+            if not available or col not in df.columns:
+                gap_drivers.append(name)
+                continue
 
-        g_mono = is_monotone(g_means, levels_present)
-        d_mono = is_monotone(d_means, levels_present)
+            sub = grp[[col, "k_num"]].dropna()
+            if len(sub) < 4:
+                gap_drivers.append(f"{name}(n<4)")
+                continue
 
-        # Spearman correlation: G vs k_num
-        grp_with_g = grp[['G','k_num']].dropna()
-        grp_with_d = grp[['D','k_num']].dropna()
+            testeable_drivers.append(name)
 
-        from scipy.stats import spearmanr
-        g_rho, g_p = (np.nan, np.nan)
-        d_rho, d_p = (np.nan, np.nan)
+            # Spearman correlation
+            rho, p = spearmanr(sub[col], sub["k_num"])
 
-        if len(grp_with_g) >= 5:
-            g_rho, g_p = spearmanr(grp_with_g['G'], grp_with_g['k_num'])
-        if len(grp_with_d) >= 5:
-            d_rho, d_p = spearmanr(grp_with_d['D'], grp_with_d['k_num'])
+            # Monotonicity: mean driver score per level
+            means = grp.groupby("complejidad")[col].mean().reindex(
+                [k for k in ["C1","C2","C3"] if k in grp["complejidad"].values]
+            )
+            vals = means.dropna().tolist()
+            is_mono = all(vals[i] <= vals[i+1] for i in range(len(vals)-1)) if len(vals) >= 2 else None
 
-        # Status
-        g_ok = (g_mono is True) and (pd.isna(g_p) or g_p < 0.10)
-        d_ok = (d_mono is True) and (pd.isna(d_p) or d_p < 0.10)
-        any_ok = g_ok or d_ok
+            # If G is NOT the primary driver, don't flag inversion as contradiction
+            is_primary = not (col == "G" and perfil in G_NOT_PRIMARY)
 
-        if g_mono is False or d_mono is False:
-            status = "❌ CONTRADICCIÓN"
-        elif any_ok:
-            status = "✅ COHERENTE"
+            if is_mono is False and is_primary:
+                status = "INVERSION"
+            elif is_mono and (pd.isna(p) or p < 0.10):
+                status = "COHERENT"
+            elif is_mono:
+                status = "WEAK"  # monotone but not significant
+            else:
+                status = "INVERSION_EXPECTED"  # non-primary driver inversion
+
+            driver_results.append({
+                "driver": name, "col": col, "rho": rho, "p": p,
+                "means": means.to_dict(), "is_mono": is_mono,
+                "status": status, "n": len(sub), "is_primary": is_primary,
+            })
+
+        # Overall profile status
+        if not testeable_drivers:
+            overall = "🔲 NO TESTEABLE"
+        elif any(r["status"] == "INVERSION" for r in driver_results):
+            overall = "❌ CONTRADICCIÓN"
+        elif any(r["status"] in ("COHERENT",) for r in driver_results):
+            overall = "✅ COHERENTE"
         else:
-            status = "⚠️  MIXTO"
-
-        # Identify the primary driver for this profile based on framework
-        PROFILE_DRIVERS = {
-            'p-meson': 'C,G',   # C dominates (components), G secondary
-            'p-modulo': 'G,X',
-            'p-laminar-simple': 'G',
-            'p-cocina-gas': 'C',
-            'p-cilindrico': 'D,G',
-            'p-basurero-rect': 'G,X',
-            'p-basurero-cil': 'D,G,X',
-            'p-carro-bandejero': 'C,G',
-            'p-carro-traslado': 'G,C',
-            'p-sumidero': 'G',
-            'p-lavadero': 'C,G',
-            'p-laser': 'X,D',
-            'p-electrico': 'C,G',
-            'p-campana': 'G',
-            'p-refrigerado': 'C',
-            'p-rejilla': 'C,G',
-            'p-tina': 'C,G',
-        }
-        expected_driver = PROFILE_DRIVERS.get(perfil, '?')
+            overall = "⚠️  MIXTO"
 
         results[perfil] = {
-            'status': status,
-            'g_mono': g_mono,
-            'd_mono': d_mono,
-            'g_rho': round(g_rho, 3) if not pd.isna(g_rho) else None,
-            'g_p': round(g_p, 3) if not pd.isna(g_p) else None,
-            'd_rho': round(d_rho, 3) if not pd.isna(d_rho) else None,
-            'd_p': round(d_p, 3) if not pd.isna(d_p) else None,
-            'g_means': {k: round(v[0], 2) if not pd.isna(v[0]) else None
-                       for k, v in g_means.items()},
-            'n_total': n_total,
-            'n_with_dims': len(grp_with_g),
-            'expected_driver': expected_driver,
-            'levels': levels_present,
+            "status": overall,
+            "n_total": n_total,
+            "testeable": testeable_drivers,
+            "gaps": gap_drivers,
+            "drivers": driver_results,
         }
 
         if verbose:
-            g_str = " → ".join(f"{k}:{g_means[k][0]:.2f}(n={g_means[k][1]})"
-                               for k in levels_present if not pd.isna(g_means[k][0]))
-            rho_str = f"ρ={g_rho:.2f}, p={g_p:.3f}" if not pd.isna(g_rho) else "insuficiente"
-            lines.append(f"\n{status}  {perfil} (n={n_total}, driver esperado={expected_driver})")
-            lines.append(f"  G scores: {g_str}")
-            lines.append(f"  Correlación G↔complejidad: {rho_str}")
+            lines.append(f"\n{overall}  {perfil}  (n={n_total})")
+            for dr in driver_results:
+                mono_sym = "↑" if dr["is_mono"] else ("↓!" if dr["is_mono"] is False else "—")
+                rho_str = f"ρ={dr['rho']:.2f} p={dr['p']:.3f}" if not pd.isna(dr["rho"]) else "—"
+                means_str = "  ".join(f"{k}:{v:.2f}" for k, v in dr["means"].items() if not pd.isna(v))
+                lines.append(f"  {dr['driver']} {mono_sym}  {means_str}  [{rho_str}]")
+            if gap_drivers:
+                lines.append(f"  🔲 Sin datos para: {', '.join(gap_drivers)}")
 
-            if g_mono is False:
-                # Find the contradiction
-                prev_k, prev_g = None, None
-                for k in levels_present:
-                    g_val = g_means[k][0]
-                    if not pd.isna(g_val) and prev_g is not None:
-                        if g_val < prev_g:
-                            lines.append(f"  ⚡ INVERSIÓN: G({prev_k})={prev_g:.2f} > G({k})={g_val:.2f}")
-                            # Show the problematic products
-                            contra = grp[grp['complejidad'] == k][
-                                ['Product: Handle', 'complejidad', 'dim_l_mm', 'dim_w_mm', 'G']
-                            ].dropna(subset=['G'])
-                            if not contra.empty:
-                                for _, pr in contra.iterrows():
-                                    lines.append(f"    → {pr['Product: Handle'][:50]:50s} "
-                                                f"L={pr['dim_l_mm']} W={pr['dim_w_mm']} G={int(pr['G'])}")
-                    if not pd.isna(g_val):
-                        prev_k, prev_g = k, g_val
+            # Show outlier products when there's an inversion
+            for dr in driver_results:
+                if dr["status"] == "INVERSION":
+                    lines.append(f"  ⚡ INVERSIÓN en {dr['driver']}: revisar productos:")
+                    col = dr["col"]
+                    # Find the level where the inversion happens
+                    mean_vals = [(k, dr["means"][k]) for k in ["C1","C2","C3"]
+                                 if k in dr["means"] and not pd.isna(dr["means"][k])]
+                    for i in range(len(mean_vals)-1):
+                        k1, v1 = mean_vals[i]
+                        k2, v2 = mean_vals[i+1]
+                        if v1 > v2:
+                            # Show products in the higher level with lower driver score
+                            prods = grp[grp["complejidad"] == k2].sort_values(col)
+                            for _, pr in prods.head(5).iterrows():
+                                g_val = pr.get(col)
+                                lines.append(f"    {k2} [{col}={g_val}] {pr['handle'][:60]}")
 
     # Summary
     total = len(results)
-    ok = sum(1 for r in results.values() if '✅' in r['status'])
-    mixed = sum(1 for r in results.values() if '⚠️' in r['status'])
-    contra = sum(1 for r in results.values() if '❌' in r['status'])
+    ok    = sum(1 for r in results.values() if "✅" in r["status"])
+    mixed = sum(1 for r in results.values() if "⚠️" in r["status"])
+    bad   = sum(1 for r in results.values() if "❌" in r["status"])
+    nt    = sum(1 for r in results.values() if "🔲" in r["status"])
 
-    coherence_pct = (ok / total * 100) if total > 0 else 0
+    coherence_pct = (ok / (total - nt) * 100) if (total - nt) > 0 else 0
 
-    lines += [
-        "",
-        "─" * 65,
-        f"RESUMEN TEST 1",
-        f"  Perfiles analizados:     {total}",
-        f"  ✅ Coherentes:           {ok} ({ok/total*100:.0f}%)",
-        f"  ⚠️  Mixtos:               {mixed} ({mixed/total*100:.0f}%)",
-        f"  ❌ Contradicciones:      {contra} ({contra/total*100:.0f}%)",
-        f"  Score coherencia:        {coherence_pct:.0f}/100",
-        "",
-        "Nota sobre contradicciones en p-meson:",
-        "  El driver G no es el primario para p-meson — es C (mecanismo/componentes).",
-        "  G(C3) < G(C1) es esperado: el mesón C3 tiene cajones (C alto) en tamaño",
-        "  igual o menor. El sistema necesita C explícito del CSV para este perfil.",
+    lines += ["", "─"*65, "RESUMEN TEST 1",
+              f"  Perfiles:        {total}",
+              f"  ✅ Coherentes:   {ok}",
+              f"  ⚠️  Mixtos:       {mixed}",
+              f"  ❌ Contradicción:{bad}",
+              f"  🔲 No testeables:{nt}  (driver C/X no en DB — gaps documentados)",
+              f"  Score (testeables): {coherence_pct:.0f}/100",
+              "",
+              "  Gaps que bloquean el test C:",
+              "    num_componentes  → p-meson, p-carro-*, p-modulo, p-electrico, p-rejilla, p-tina",
+              "    num_quemadores   → p-cocina-gas",
+              "    num_tazas        → p-lavadero",
+              "    num_niveles      → p-carro-bandejero",
+              "    tiene_mecanismo  → p-basurero-cil",
+              "  → Enriquecer DB con estas columnas = mayor impacto en ICM",
     ]
 
     if verbose:
@@ -273,411 +235,368 @@ def test_drivers(fab, verbose=True):
 
     return results, coherence_pct, "\n".join(lines)
 
-# ─── TEST 2: Anchor quality ────────────────────────────────────────────────────
+# ─── TEST 2: Intra-group cohesion ─────────────────────────────────────────────
 
-def test_anchors(fab, matrix_df, verbose=True):
+def test_cohesion(df, verbose=True):
     """
-    For each anchor in PROCESS_MATRIX, compute how 'central' it is
-    to its perfil_proceso × complejidad group.
+    For each (perfil_proceso × complejidad) bucket:
+    1. Compute within-group variance of available driver scores (G, D)
+    2. Test inter-group separation (Mann-Whitney between adjacent levels)
+    3. Flag buckets where variance is suspiciously high (products may be miscategorized)
+
+    High intra-group variance + low inter-group separation = weak categorization.
     """
-    lines = ["", "=" * 65, "TEST 2 — CALIDAD DE ANCLAS", "=" * 65]
+    lines = ["", "="*65,
+             "TEST 2 — COHESIÓN INTRA-GRUPO  (¿están bien agrupados?)",
+             "="*65]
     results = {}
 
-    if matrix_df.empty:
-        lines.append("⚠️  PROCESS_MATRIX.csv no encontrado o vacío — saltando test de anclas")
-        if verbose: print("\n".join(lines))
-        return results, 0, "\n".join(lines)
+    perfiles = [p for p in sorted(df["perfil_proceso"].unique())
+                if p != "p-importado"]
 
-    anchors = matrix_df[matrix_df['tipo'] == 'ANCHOR']
-    if anchors.empty:
-        lines.append("⚠️  No hay filas ANCHOR en PROCESS_MATRIX.csv")
-        if verbose: print("\n".join(lines))
-        return results, 0, "\n".join(lines)
-
-    anchor_scores = []
-
-    for _, anchor in anchors.iterrows():
-        perfil = anchor.get('subfamilia', '?')  # or product name fallback
-        producto = anchor.get('producto', '?')
-
-        # Find the product in the CSV
-        match = fab[fab['Product: Handle'].str.contains(
-            str(producto).lower().replace(' ', '-'), case=False, na=False
-        )]
-
-        if match.empty:
-            lines.append(f"\n⚠️  Ancla '{producto}' no encontrada en CSV")
+    for perfil in perfiles:
+        grp = df[df["perfil_proceso"] == perfil]
+        n_total = len(grp)
+        if n_total < 4:
             continue
 
-        anchor_row = match.iloc[0]
-        v_anchor = product_vector(anchor_row)
-        anchor_complexity = anchor_row.get('complejidad', '?')
-
-        # Get all products of same perfil_proceso × complejidad
-        same_group = fab[
-            (fab['perfil_proceso'] == anchor_row['perfil_proceso']) &
-            (fab['complejidad'] == anchor_complexity)
-        ]
-
-        if len(same_group) < 2:
-            lines.append(f"\n⚠️  Ancla '{producto}' — grupo muy pequeño (n={len(same_group)})")
+        levels = sorted(grp["complejidad"].dropna().unique(),
+                        key=lambda k: {"C1":1,"C2":2,"C3":3}.get(k, 99))
+        if len(levels) < 2:
             continue
 
-        # Compute distances from all group members to anchor
-        distances = []
-        for _, row in same_group.iterrows():
-            v = product_vector(row)
-            if v.sum() > 0:  # only if has some dimension data
-                distances.append(euclidean(v_anchor, v))
+        perfil_results = {"n_total": n_total, "levels": {}, "separations": []}
 
-        if not distances:
-            continue
+        for k in levels:
+            sub = grp[grp["complejidad"] == k]
+            g_vals = sub["G"].dropna()
+            d_vals = sub["D"].dropna()
 
-        dist_mean = np.mean(distances)
-        dist_max = np.max(distances)
+            level_info = {
+                "n": len(sub),
+                "g_mean": g_vals.mean() if len(g_vals) >= 2 else None,
+                "g_std":  g_vals.std()  if len(g_vals) >= 2 else None,
+                "d_mean": d_vals.mean() if len(d_vals) >= 2 else None,
+                "d_std":  d_vals.std()  if len(d_vals) >= 2 else None,
+                "outliers": [],
+            }
 
-        # Find if another product would be more central
-        centrality = []
-        for _, row in same_group.iterrows():
-            v = product_vector(row)
-            if v.sum() > 0:
-                dists_from_this = [euclidean(v, product_vector(r))
-                                   for _, r in same_group.iterrows()]
-                centrality.append((row['Product: Handle'], np.mean(dists_from_this)))
+            # Flag products whose G score is far from their level mean
+            # (only for profiles where G is primary)
+            if perfil not in G_NOT_PRIMARY and len(g_vals) >= 3:
+                g_mean = g_vals.mean()
+                g_std  = g_vals.std()
+                if g_std > 0:
+                    for _, row in sub.iterrows():
+                        g = row.get("G")
+                        if pd.notna(g):
+                            z = abs(g - g_mean) / g_std
+                            if z > 1.5:
+                                level_info["outliers"].append({
+                                    "handle": row["handle"],
+                                    "G": g, "z": round(z, 2)
+                                })
 
-        centrality.sort(key=lambda x: x[1])
-        most_central = centrality[0] if centrality else (None, None)
+            perfil_results["levels"][k] = level_info
 
-        status = "✅" if dist_mean < 0.25 else ("⚠️" if dist_mean < 0.40 else "❌")
+        # Inter-group separation: adjacent level pairs
+        all_separated = True
+        for i in range(len(levels)-1):
+            k1, k2 = levels[i], levels[i+1]
+            g1 = grp[grp["complejidad"] == k1]["G"].dropna()
+            g2 = grp[grp["complejidad"] == k2]["G"].dropna()
 
-        results[producto] = {
-            'status': status,
-            'dist_mean': round(dist_mean, 3),
-            'dist_max': round(dist_max, 3),
-            'n_group': len(same_group),
-            'most_central': most_central[0],
-            'most_central_dist': round(most_central[1], 3) if most_central[1] else None,
-        }
+            sep = {"pair": f"{k1}→{k2}", "driver": "G",
+                   "n1": len(g1), "n2": len(g2),
+                   "mean1": g1.mean() if len(g1) else None,
+                   "mean2": g2.mean() if len(g2) else None,
+                   "p": None, "separated": None}
 
-        anchor_scores.append(1 if status == "✅" else 0)
+            if len(g1) >= 3 and len(g2) >= 3 and perfil not in G_NOT_PRIMARY:
+                try:
+                    _, p = mannwhitneyu(g1, g2, alternative="less")
+                    sep["p"] = round(p, 3)
+                    sep["separated"] = p < 0.10
+                    if not sep["separated"]:
+                        all_separated = False
+                except Exception:
+                    pass
 
-        lines.append(f"\n{status} Ancla: {producto} ({anchor_row['perfil_proceso']} {anchor_complexity})")
-        lines.append(f"   Distancia media al grupo: {dist_mean:.3f} (n={len(same_group)})")
-        if most_central[0] and most_central[0] != anchor_row.get('Product: Handle', ''):
-            lines.append(f"   Más central en el grupo: {most_central[0][:60]} (dist_mean={most_central[1]:.3f})")
+            perfil_results["separations"].append(sep)
 
-    anchor_quality_pct = (np.mean(anchor_scores) * 100) if anchor_scores else 0
+        # Status
+        n_outliers = sum(len(v["outliers"]) for v in perfil_results["levels"].values())
+        outlier_rate = n_outliers / n_total if n_total > 0 else 0
+        if outlier_rate > 0.25:
+            status = "⚠️  ALTA VARIANZA"
+        elif not all_separated and perfil not in G_NOT_PRIMARY:
+            status = "⚠️  GRUPOS SOLAPADOS"
+        else:
+            status = "✅ COHESIVO"
 
-    lines += [
-        "",
-        "─" * 65,
-        f"RESUMEN TEST 2",
-        f"  Anclas analizadas:       {len(anchor_scores)}",
-        f"  ✅ Representativas:      {sum(anchor_scores)}",
-        f"  Score calidad anclas:    {anchor_quality_pct:.0f}/100",
+        perfil_results["status"] = status
+        perfil_results["n_outliers"] = n_outliers
+        results[perfil] = perfil_results
+
+        if verbose:
+            lines.append(f"\n{status}  {perfil}  (n={n_total})")
+            for k, info in perfil_results["levels"].items():
+                g_str = f"G={info['g_mean']:.2f}±{info['g_std']:.2f}" if info["g_mean"] is not None else "G=—"
+                d_str = f"D={info['d_mean']:.2f}±{info['d_std']:.2f}" if info["d_mean"] is not None else "D=—"
+                lines.append(f"  {k} (n={info['n']}): {g_str}  {d_str}")
+                for out in info["outliers"]:
+                    lines.append(f"    ⚡ outlier G={out['G']} z={out['z']}  {out['handle'][:60]}")
+            for sep in perfil_results["separations"]:
+                if sep["p"] is not None:
+                    sym = "✅" if sep["separated"] else "⚠️"
+                    lines.append(f"  Separación {sep['pair']}: {sym} p={sep['p']:.3f}")
+
+    cohesive = sum(1 for r in results.values() if "✅" in r["status"])
+    total_t  = len(results)
+    cohesion_pct = cohesive / total_t * 100 if total_t else 0
+
+    lines += ["", "─"*65, "RESUMEN TEST 2",
+              f"  Perfiles con ≥2 niveles: {total_t}",
+              f"  ✅ Cohesivos:   {cohesive}",
+              f"  ⚠️  Varianza alta o solapados: {total_t - cohesive}",
+              f"  Score cohesión: {cohesion_pct:.0f}/100",
     ]
 
     if verbose:
         print("\n".join(lines))
 
-    return results, anchor_quality_pct, "\n".join(lines)
+    return results, cohesion_pct, "\n".join(lines)
 
-# ─── TEST 3: Extrapolation coherence ──────────────────────────────────────────
+# ─── TEST 3: Outlier products (candidates for reclassification) ───────────────
 
-def test_extrapolation(fab, matrix_df, verbose=True):
+def test_outliers(df, verbose=True):
     """
-    For each EXTRAPOL in PROCESS_MATRIX, verify that:
-    1. The assigned anchor is the closest anchor in vector space
-    2. The factor_escala is within a reasonable range
-    3. Coverage: what % of fabricado products have a valid anchor
+    Identifies individual products that look like they belong in a different
+    (perfil_proceso × complejidad) bucket based on available driver scores.
+
+    For each product: compute how its driver scores compare to ALL buckets.
+    If its scores are closer to a different bucket's centroid → flag it.
     """
-    lines = ["", "=" * 65, "TEST 3 — COHERENCIA DE EXTRAPOLACIONES", "=" * 65]
+    lines = ["", "="*65,
+             "TEST 3 — PRODUCTOS CANDIDATOS A RECLASIFICACIÓN",
+             "="*65]
 
-    if matrix_df.empty:
-        lines.append("⚠️  PROCESS_MATRIX.csv no encontrado — saltando")
-        if verbose: print("\n".join(lines))
-        return {}, 0, "\n".join(lines)
+    candidates = []
 
-    extrapols = matrix_df[matrix_df['tipo'] == 'EXTRAPOL']
-    anchors_df = matrix_df[matrix_df['tipo'] == 'ANCHOR']
+    # Build bucket centroids using G and D
+    buckets = {}
+    for (perfil, comp), grp in df.groupby(["perfil_proceso", "complejidad"]):
+        g_vals = grp["G"].dropna()
+        d_vals = grp["D"].dropna()
+        if len(grp) >= 2:
+            buckets[(perfil, comp)] = {
+                "g_mean": g_vals.mean() if len(g_vals) else None,
+                "d_mean": d_vals.mean() if len(d_vals) else None,
+                "n": len(grp),
+            }
 
-    n_correct = 0
-    n_tested = 0
-    issues = []
+    def bucket_distance(g, d, centroid):
+        """Euclidean distance from product (G,D) to bucket centroid."""
+        dims = []
+        if g is not None and centroid["g_mean"] is not None:
+            dims.append((g/3 - centroid["g_mean"]/3) ** 2)
+        if d is not None and centroid["d_mean"] is not None:
+            dims.append((d/3 - centroid["d_mean"]/3) ** 2)
+        if not dims:
+            return np.nan
+        return float(np.sqrt(sum(dims)))
 
-    for _, ext in extrapols.iterrows():
-        producto = ext.get('producto', '?')
-        anchor_ref = ext.get('anchor_ref', '?')
-        driver = ext.get('driver_escala', '?')
-        factor = pd.to_numeric(ext.get('factor_escala', '?'), errors='coerce')
+    for _, row in df.iterrows():
+        perfil = row["perfil_proceso"]
+        comp   = row["complejidad"]
+        g      = row["G"] if pd.notna(row.get("G")) else None
+        d      = row["D"] if pd.notna(row.get("D")) else None
 
-        # Check factor_escala reasonableness
-        if not pd.isna(factor):
-            if factor < 0.2 or factor > 8.0:
-                issues.append(f"⚠️  {producto}: factor_escala={factor:.2f} fuera de rango razonable (0.2–8.0)")
-            elif factor > 4.0:
-                issues.append(f"📏 {producto}: factor_escala={factor:.2f} — muy alejado del ancla, verificar")
-            else:
-                n_correct += 1
-            n_tested += 1
+        if g is None and d is None:
+            continue  # no driver data — can't compare
+        if (perfil, comp) not in buckets:
+            continue
 
-    # Coverage analysis
-    total_fab = len(fab[fab['importado_final'] == 'NO'])
-    n_anchors_definidos = len(anchors_df)
-    n_extrapols = len(extrapols)
-    n_phase2 = len(matrix_df[matrix_df['tipo'] == 'PHASE2']) if 'tipo' in matrix_df.columns else 0
+        current_key = (perfil, comp)
+        current_dist = bucket_distance(g, d, buckets[current_key])
 
-    coverage_pct = min(100, (n_anchors_definidos + n_extrapols) / total_fab * 100) if total_fab > 0 else 0
+        # Find closest bucket within the same perfil
+        same_perfil_buckets = {k: v for k, v in buckets.items()
+                               if k[0] == perfil and k != current_key}
+        if not same_perfil_buckets:
+            continue
 
-    lines += [
-        f"\nAnclas definidas:          {n_anchors_definidos}",
-        f"Extrapols definidos:       {n_extrapols}",
-        f"PHASE2 pendientes:         {n_phase2}",
-        f"Total productos fabricado: {total_fab}",
-        f"Cobertura del modelo:      {coverage_pct:.0f}%",
-        "",
-    ]
+        best_key, best_dist = min(
+            ((k, bucket_distance(g, d, v)) for k, v in same_perfil_buckets.items()
+             if not np.isnan(bucket_distance(g, d, v))),
+            key=lambda x: x[1],
+            default=(None, np.nan),
+        )
 
-    if issues:
-        lines.append("Problemas detectados:")
-        lines.extend([f"  {i}" for i in issues])
-    else:
-        lines.append("✅ No se detectaron problemas en factor_escala")
+        if best_key is None or np.isnan(best_dist) or np.isnan(current_dist):
+            continue
 
-    lines += [
-        "",
-        "─" * 65,
-        "RESUMEN TEST 3",
-        f"  Extrapols con factor_escala válido: {n_correct}/{n_tested}",
-        f"  Cobertura del catálogo:             {coverage_pct:.0f}%",
+        # Flag if another bucket is meaningfully closer
+        if best_dist < current_dist * 0.6:  # 40% closer = flag
+            candidates.append({
+                "handle":       row["handle"],
+                "current":      f"{perfil} {comp}",
+                "suggested":    f"{best_key[0]} {best_key[1]}",
+                "current_dist": round(current_dist, 3),
+                "best_dist":    round(best_dist, 3),
+                "G": g, "D": d,
+                "descripcion":  str(row.get("descripcion_web", ""))[:80],
+            })
+
+    lines.append(f"\n{len(candidates)} productos candidatos a revisar:\n")
+    for c in sorted(candidates, key=lambda x: x["best_dist"] - x["current_dist"]):
+        lines.append(f"  {c['handle'][:55]:55s}  {c['current']} → {c['suggested']}")
+        lines.append(f"    G={c['G']}  D={c['D']}   dist_actual={c['current_dist']}  dist_sugerida={c['best_dist']}")
+        if c["descripcion"]:
+            lines.append(f"    \"{c['descripcion']}\"")
+
+    lines += ["", "─"*65, "RESUMEN TEST 3",
+              f"  Productos candidatos a reclasificación: {len(candidates)}",
+              "  (Estos son candidatos — requieren validación humana en la app)",
     ]
 
     if verbose:
         print("\n".join(lines))
 
-    return {'coverage_pct': coverage_pct, 'issues': issues}, coverage_pct, "\n".join(lines)
+    return candidates, len(candidates), "\n".join(lines)
 
-# ─── ICM — Índice de Confianza del Modelo ─────────────────────────────────────
+# ─── TEST 4: Coverage ─────────────────────────────────────────────────────────
 
-def compute_ICM(coherence_pct, anchor_quality_pct, coverage_pct, drift_pct=None):
+def test_coverage(df, verbose=True):
+    """How well does the current categorization cover the catalog."""
+    lines = ["", "="*65, "TEST 4 — COBERTURA Y ESTADO DE VALIDACIÓN", "="*65]
+
+    total = len(df[df["perfil_proceso"] != "p-importado"])
+    validated = df[(df["perfil_proceso"] != "p-importado") & (df["validated"] == 1)]
+    no_perf = df[df["perfil_proceso"].isna() | (df["perfil_proceso"] == "")]
+    no_comp  = df[df["complejidad"].isna() | (df["complejidad"] == "")]
+    no_dims  = df[df["G"].isna() & df["D"].isna()]
+
+    validated_pct = len(validated) / total * 100 if total else 0
+    coverage_pct  = (1 - len(no_dims) / total) * 100 if total else 0
+
+    lines += [
+        f"\n  Total fabricado (sin importados): {total}",
+        f"  Validados por humano:  {len(validated)} ({validated_pct:.0f}%)",
+        f"  Sin perfil_proceso:    {len(no_perf)}",
+        f"  Sin complejidad:       {len(no_comp)}",
+        f"  Sin datos dimensiones: {len(no_dims)} ({100-coverage_pct:.0f}% sin G ni D)",
+        f"",
+        f"  Validación por perfil:",
+    ]
+    for perfil in sorted(df["perfil_proceso"].dropna().unique()):
+        grp = df[df["perfil_proceso"] == perfil]
+        val = grp[grp["validated"] == 1]
+        lines.append(f"    {perfil:25s}  {len(val):3d}/{len(grp):3d} validados")
+
+    lines += ["", "─"*65, "RESUMEN TEST 4",
+              f"  Score cobertura dims:    {coverage_pct:.0f}/100",
+              f"  Score validación humana: {validated_pct:.0f}/100  (actualmente 0 — primer run)",
+    ]
+
+    if verbose:
+        print("\n".join(lines))
+
+    return {"coverage_pct": coverage_pct, "validated_pct": validated_pct}, coverage_pct, "\n".join(lines)
+
+# ─── ICM ──────────────────────────────────────────────────────────────────────
+
+def compute_ICM(coherence_pct, cohesion_pct, coverage_pct, drift_pct=None):
     """
     Índice de Confianza del Modelo — 0 to 100.
-    drift_pct: % of real measurements within 20% of model estimate. None if no data.
+
+    Weights:
+      35% coherencia de drivers (declared drivers correlate with complexity)
+      25% cohesión intra-grupo (products within bucket are similar)
+      15% cobertura (dimension data + human validation)
+      25% drift real vs estimado (only when chronometer data exists)
     """
-    w_coherence = 0.35
-    w_anchor    = 0.25
-    w_coverage  = 0.15
-    w_drift     = 0.25
+    w_coh  = 0.35
+    w_gru  = 0.25
+    w_cov  = 0.15
+    w_drif = 0.25
 
     if drift_pct is None:
-        # Redistribute drift weight to others proportionally
-        total_w = w_coherence + w_anchor + w_coverage
-        w_coherence /= total_w
-        w_anchor    /= total_w
-        w_coverage  /= total_w
-        ICM = (w_coherence * coherence_pct +
-               w_anchor * anchor_quality_pct +
-               w_coverage * coverage_pct)
+        total_w = w_coh + w_gru + w_cov
+        ICM = (w_coh/total_w * coherence_pct +
+               w_gru/total_w * cohesion_pct  +
+               w_cov/total_w * coverage_pct)
     else:
-        ICM = (w_coherence * coherence_pct +
-               w_anchor * anchor_quality_pct +
-               w_coverage * coverage_pct +
-               w_drift * drift_pct)
+        ICM = (w_coh  * coherence_pct +
+               w_gru  * cohesion_pct  +
+               w_cov  * coverage_pct  +
+               w_drif * drift_pct)
 
     return round(ICM, 1)
 
-# ─── Supuestos contradictorios — análisis específico ──────────────────────────
-
-def analyze_assumption_contradictions(fab, verbose=True):
-    """
-    Tests specific hypotheses from FRAMEWORK_CATEGORIZATION.md
-    against the actual data distribution.
-    """
-    lines = ["", "=" * 65, "ANÁLISIS DE SUPUESTOS DEL FRAMEWORK", "=" * 65]
-
-    hypotheses = [
-        {
-            "id": "H1",
-            "text": "p-meson: La complejidad C1→C3 está driven por C (mecanismo), no G (tamaño)",
-            "test": lambda df: (
-                # In p-meson, C3 products should NOT be larger than C1
-                # (cajones don't require larger products)
-                # We can proxy C by checking if C3 products have similar G to C1
-                "No testeable directamente sin columna C explícita en CSV — "
-                "ver gap: campo 'num_componentes' no está en Productos_Clasificaciones.csv"
-            ),
-            "gap": "Campo C (num_componentes) no disponible en CSV actual"
-        },
-        {
-            "id": "H2",
-            "text": "p-basurero-rect: Pulido es SIEMPRE C3, independiente del tamaño",
-            "test": lambda df: check_process_invariant(df, 'p-basurero-rect'),
-            "gap": None
-        },
-        {
-            "id": "H3",
-            "text": "p-cilindrico: La complejidad C1→C3 está driven por D (espesor) + G (diámetro)",
-            "test": lambda df: check_driver_primary(df, 'p-cilindrico', 'D'),
-            "gap": None
-        },
-        {
-            "id": "H4",
-            "text": "p-lavadero: La complejidad C1→C3 está driven por C (número de tazas)",
-            "test": lambda df: (
-                "No testeable directamente — num_tazas no es columna en CSV"
-            ),
-            "gap": "Campo 'num_tazas' no en CSV — necesita enriquecimiento manual"
-        },
-        {
-            "id": "H5",
-            "text": "p-campana: El plegado es siempre C2+ (cuerpo >1m requiere 2 operadores)",
-            "test": lambda df: check_size_threshold(df, 'p-campana', 'dim_l_mm', 1000),
-            "gap": None
-        },
-    ]
-
-    gaps = []
-    tested = []
-
-    for h in hypotheses:
-        result = h['test'](fab)
-        if isinstance(result, str):  # gap
-            lines.append(f"\n{h['id']}: {h['text']}")
-            lines.append(f"   ⚠️  GAP: {result}")
-            gaps.append(h['id'])
-        else:
-            lines.append(f"\n{h['id']}: {h['text']}")
-            lines.append(f"   {result}")
-            tested.append(h['id'])
-
-    # Identify critical missing columns
-    lines += [
-        "",
-        "─" * 65,
-        "CAMPOS FALTANTES QUE LIMITARÁN EL PODER DE AUDITORÍA:",
-        "",
-        "  Campo             | Perfil(s) afectados        | Impacto",
-        "  ──────────────────|────────────────────────────|────────────────",
-        "  num_componentes   | p-meson, p-carro-*, p-mod  | Driver C no testeable",
-        "  num_tazas         | p-lavadero                 | Driver C no testeable",
-        "  num_quemadores    | p-cocina-gas               | Driver C no testeable",
-        "  num_niveles       | p-carro-bandejero          | Driver C no testeable",
-        "  terminacion_pulido| p-basurero-rect/cil        | Flag X no testeable",
-        "  tiene_mecanismo   | p-basurero-cil             | Driver X no testeable",
-        "",
-        "→ Para cerrar estos gaps, enriquecer Productos_Clasificaciones.csv",
-        "  con estas columnas por producto (manual o scraping de descripcion_web).",
-    ]
-
-    if verbose:
-        print("\n".join(lines))
-
-    return gaps, tested, "\n".join(lines)
-
-def check_process_invariant(df, perfil):
-    """Check if a process-level claim holds across the profile"""
-    grp = df[df['perfil_proceso'] == perfil]
-    if len(grp) == 0:
-        return f"No hay productos de {perfil} en el CSV"
-    n = len(grp)
-    c3 = len(grp[grp['complejidad'] == 'C3'])
-    c1 = len(grp[grp['complejidad'] == 'C1'])
-    return (f"n={n} productos: C1={c1}, C3={c3}. "
-            f"Distribución consistente con perfil (pulido C3 no se refleja en complejidad global — "
-            f"ver §5 FRAMEWORK_CATEGORIZATION.md: complejidad global ≠ complejidad por proceso)")
-
-def check_driver_primary(df, perfil, driver_col):
-    """Check Spearman correlation between a driver and complexity"""
-    from scipy.stats import spearmanr
-    grp = df[df['perfil_proceso'] == perfil][['k_num', driver_col]].dropna()
-    if len(grp) < 4:
-        return f"Insuficientes datos con {driver_col} para {perfil} (n={len(grp)})"
-    rho, p = spearmanr(grp[driver_col], grp['k_num'])
-    sig = "✅ significativa" if p < 0.10 else "⚠️ no significativa"
-    return f"Correlación Spearman {driver_col}↔complejidad: ρ={rho:.3f}, p={p:.3f} — {sig}"
-
-def check_size_threshold(df, perfil, dim_col, threshold_mm):
-    """Check if all products of a profile exceed a size threshold"""
-    grp = df[df['perfil_proceso'] == perfil][dim_col].dropna()
-    if len(grp) == 0:
-        return f"Sin datos de {dim_col} para {perfil}"
-    above = (grp >= threshold_mm).sum()
-    pct = above / len(grp) * 100
-    return (f"{above}/{len(grp)} ({pct:.0f}%) productos {perfil} tienen {dim_col} >= {threshold_mm}mm — "
-            f"{'✅ consistente' if pct >= 80 else '⚠️ verificar'} con el supuesto")
-
-# ─── Main ──────────────────────────────────────────────────────────────────────
+# ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description='Dulox Model Auditor')
-    parser.add_argument('--test', default='full',
-                       choices=['drivers', 'anchors', 'extrapolation', 'assumptions', 'full'])
-    parser.add_argument('--save', action='store_true', help='Save report to audit-reports/')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test", default="full",
+                        choices=["drivers","cohesion","outliers","coverage","full"])
+    parser.add_argument("--save", action="store_true")
     args = parser.parse_args()
 
     print(f"\n{'='*65}")
     print(f"DULOX MODEL AUDITOR — {date.today()}")
-    print(f"Dataset: {CSV.name}")
+    print(f"DB: {DB.name}")
     print(f"{'='*65}")
 
-    fab = load_data()
-    matrix_df = load_matrix()
+    df = load_db()
+    print(f"Productos cargados: {len(df)}")
+    print(f"Perfiles únicos:    {df['perfil_proceso'].nunique()}")
 
-    total_fab = len(fab[fab['importado_final'] == 'NO']) if 'importado_final' in fab.columns else len(fab)
-    n_with_dims = fab[['dim_l_mm', 'dim_w_mm']].dropna().shape[0]
-
-    print(f"Productos fabricados cargados: {len(fab)}")
-    print(f"Con dimensiones L×W: {n_with_dims} ({100*n_with_dims/len(fab):.0f}%)")
-    print(f"perfiles_proceso únicos: {fab['perfil_proceso'].nunique()}")
-
-    all_output = [f"# Reporte de Auditoría — {date.today()}"]
+    all_output = [f"# Reporte de Auditoría — {date.today()}\n"]
 
     coherence_pct = 50
-    anchor_quality_pct = 50
-    coverage_pct = 50
+    cohesion_pct  = 50
+    coverage_pct  = 50
 
-    if args.test in ('drivers', 'full'):
-        _, coherence_pct, txt = test_drivers(fab)
+    if args.test in ("drivers", "full"):
+        _, coherence_pct, txt = test_drivers(df)
         all_output.append(txt)
 
-    if args.test in ('anchors', 'full'):
-        _, anchor_quality_pct, txt = test_anchors(fab, matrix_df)
+    if args.test in ("cohesion", "full"):
+        _, cohesion_pct, txt = test_cohesion(df)
         all_output.append(txt)
 
-    if args.test in ('extrapolation', 'full'):
-        result, coverage_pct, txt = test_extrapolation(fab, matrix_df)
+    if args.test in ("outliers", "full"):
+        _, _, txt = test_outliers(df)
         all_output.append(txt)
 
-    if args.test in ('assumptions', 'full'):
-        gaps, tested, txt = analyze_assumption_contradictions(fab)
+    if args.test in ("coverage", "full"):
+        _, coverage_pct, txt = test_coverage(df)
         all_output.append(txt)
 
-    # ICM
-    ICM = compute_ICM(coherence_pct, anchor_quality_pct, coverage_pct)
+    ICM = compute_ICM(coherence_pct, cohesion_pct, coverage_pct)
 
     icm_block = [
-        "",
-        "=" * 65,
+        "", "="*65,
         f"ÍNDICE DE CONFIANZA DEL MODELO (ICM): {ICM}/100",
-        "=" * 65,
-        f"  Coherencia drivers:   {coherence_pct:.0f}/100  (peso 35%)",
-        f"  Calidad anclas:       {anchor_quality_pct:.0f}/100  (peso 25%)",
-        f"  Cobertura catálogo:   {coverage_pct:.0f}/100  (peso 15%)",
-        f"  Drift real vs est.:   sin datos   (peso 25% — requiere cronometrajes)",
+        "="*65,
+        f"  Coherencia drivers:     {coherence_pct:.0f}/100  (peso 35%)",
+        f"  Cohesión intra-grupo:   {cohesion_pct:.0f}/100  (peso 25%)",
+        f"  Cobertura catálogo:     {coverage_pct:.0f}/100  (peso 15%)",
+        f"  Drift real vs est.:     sin datos   (peso 25% — requiere cronometrajes)",
         "",
         "Interpretación:",
-        "  80–100: Modelo bien calibrado — usar con confianza",
-        "  60–79:  Modelo funcional — gaps documentados, monitorear",
-        "  40–59:  Modelo en construcción — no usar para pricing sin validación",
+        "  80–100: Modelo bien calibrado",
+        "  60–79:  Modelo funcional — gaps documentados",
+        "  40–59:  Modelo en construcción",
         "  <40:    Modelo inconsistente — recalibración necesaria",
         "",
-        f"Evaluación: {'Modelo en construcción' if ICM < 60 else ('Modelo funcional' if ICM < 80 else 'Modelo calibrado')}",
+        f"Estado: {'Modelo en construcción' if ICM < 60 else ('Modelo funcional' if ICM < 80 else 'Modelo calibrado')}",
         "",
-        "Próxima acción de mayor impacto en ICM:",
-        "  → Enriquecer CSV con campos C (num_componentes, num_quemadores, etc.)",
-        "    Impacto estimado: +15–25 puntos en coherencia_drivers",
-        "  → Medir 3 anclas con cronómetro (Mesón Simple, Cubrejunta, Poruña)",
-        "    Impacto estimado: +25 puntos al activar componente drift",
+        "Acción de mayor impacto en ICM:",
+        "  1. Agregar num_componentes/quemadores/niveles/tazas a DB  → +15–25 pts coherencia",
+        "  2. Validar humano 50+ productos en review app             → +coverage",
+        "  3. Medir 3 anclas con cronómetro                         → +25 pts drift",
     ]
 
     print("\n".join(icm_block))
@@ -689,9 +608,10 @@ def main():
         report_path.write_text("\n".join(all_output))
         print(f"\n✅ Reporte guardado en: {report_path}")
 
-        # Update AUDIT_LOG.md
-        log_line = f"| {date.today()} | {args.test} | {ICM} | Todos | Ver reporte | — | [AUDIT_{date.today()}.md](audit-reports/AUDIT_{date.today()}.md) |"
-        print(f"→ Agregar al AUDIT_LOG.md: {log_line}")
+        log_line = (f"| {date.today()} | {args.test} | {ICM} | "
+                    f"Ver reporte | — | "
+                    f"[AUDIT_{date.today()}.md](audit-reports/AUDIT_{date.today()}.md) |")
+        print(f"→ Agregar a AUDIT_LOG.md:\n  {log_line}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
