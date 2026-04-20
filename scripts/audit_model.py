@@ -25,49 +25,117 @@ from pathlib import Path
 from datetime import date
 from scipy.stats import spearmanr, f_oneway, mannwhitneyu
 
-ROOT      = Path(__file__).resolve().parent.parent
-DB        = ROOT / "dataset" / "products.db"
-CHUNKS    = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
-AUDIT_LOG = ROOT / "files-process" / "process-measurements" / "AUDIT_LOG.md"
-AUDIT_DIR = ROOT / "files-process" / "process-measurements" / "audit-reports"
+ROOT       = Path(__file__).resolve().parent.parent
+DB         = ROOT / "dataset" / "products.db"
+CHUNKS     = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
+AUDIT_LOG  = ROOT / "files-process" / "process-measurements" / "AUDIT_LOG.md"
+AUDIT_DIR  = ROOT / "files-process" / "process-measurements" / "audit-reports"
+RULES_FILE = ROOT / "files-process" / "PROCESS_RULES.json"
 
-# ─── Declared primary drivers per perfil_proceso ──────────────────────────────
+# ─── Load driver thresholds from PROCESS_RULES.json ───────────────────────────
+# Fallback constants are used only if the file is missing (offline/dev).
+
+_G_BREAKPOINTS = [500_000, 1_500_000]   # mm² — fallback
+_D_BREAKPOINTS = [1.5, 2.0]             # mm  — fallback
+
+def _load_rules():
+    """Load PROCESS_RULES.json. Returns parsed dict or {} on failure."""
+    try:
+        with open(RULES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"⚠️  PROCESS_RULES.json not found or invalid ({e}). Using hardcoded fallback thresholds.")
+        return {}
+
+_RULES = _load_rules()
+
+if _RULES:
+    _G_BREAKPOINTS = _RULES["driver_thresholds"]["G"]["breakpoints_mm2"]
+    _D_BREAKPOINTS = _RULES["driver_thresholds"]["D"]["breakpoints_mm"]
+
+def g_score(area_mm2):
+    """Compute G driver score (1/2/3) from area in mm². Uses PROCESS_RULES.json thresholds."""
+    if area_mm2 is None or (isinstance(area_mm2, float) and np.isnan(area_mm2)):
+        return np.nan
+    lo, hi = _G_BREAKPOINTS
+    return 1 if area_mm2 < lo else (2 if area_mm2 < hi else 3)
+
+def d_score(espesor_mm):
+    """Compute D driver score (1/2/3) from espesor in mm. Uses PROCESS_RULES.json thresholds."""
+    if espesor_mm is None or (isinstance(espesor_mm, float) and np.isnan(espesor_mm)):
+        return np.nan
+    lo, hi = _D_BREAKPOINTS
+    return 1 if espesor_mm <= lo else (2 if espesor_mm <= hi else 3)
+
+# ─── Build PROFILE_DRIVERS from PROCESS_RULES.json ────────────────────────────
 #
 # Format: list of (driver_col, driver_name, available_in_db)
-# available_in_db = True if the column exists and is populated; False = gap
+# available_in_db = True if the column exists and is populated in DB.
 #
 # G = geometry (area L×W)      — available as column G in DB
 # D = density (espesor)        — available as column D in DB
 # C = components (count)       — NOT in DB yet (num_componentes etc.)
 # X = characteristics (flags)  — NOT in DB yet
 
-PROFILE_DRIVERS = {
-    # perfil           primary drivers       notes
-    "p-meson":          [("G","G",True), ("C","C",False)],   # C drives cajones complexity
-    "p-modulo":         [("G","G",True), ("X","X",False)],
-    "p-laminar-simple": [("G","G",True)],
-    "p-cocina-gas":     [("C","C",False)],                    # quemadores count
-    "p-cilindrico":     [("D","D",True), ("G","G",True)],
-    "p-basurero-rect":  [("G","G",True), ("X","X",False)],
-    "p-basurero-cil":   [("D","D",True), ("G","G",True), ("X","X",False)],
-    "p-carro-bandejero":[("C","C",False), ("G","G",True)],    # niveles count
-    "p-carro-traslado": [("G","G",True), ("C","C",False)],
-    "p-sumidero":       [("G","G",True)],
-    "p-lavadero":       [("C","C",False), ("G","G",True)],    # tazas count
-    "p-laser":          [("X","X",False), ("D","D",True)],
-    "p-electrico":      [("C","C",False), ("G","G",True)],
-    "p-campana":        [("G","G",True)],
-    "p-refrigerado":    [("C","C",False)],
-    "p-rejilla":        [("C","C",False), ("G","G",True)],
-    "p-tina":           [("C","C",False), ("G","G",True)],
-    "p-custom":         [("G","G",True), ("C","C",False)],
-}
+# Static DB-availability map (update when new columns are added to products.db)
+_DRIVER_DB_AVAILABLE = {"G": True, "D": True, "C": False, "X": False}
+
+def _build_profile_drivers():
+    """
+    Build PROFILE_DRIVERS from PROCESS_RULES.json profiles section.
+    Falls back to hardcoded table if rules file is missing.
+    """
+    if not _RULES or "profiles" not in _RULES:
+        # Hardcoded fallback
+        return {
+            "p-meson":          [("G","G",True), ("C","C",False)],
+            "p-modulo":         [("G","G",True), ("X","X",False)],
+            "p-laminar-simple": [("G","G",True)],
+            "p-cocina-gas":     [("C","C",False)],
+            "p-cilindrico":     [("D","D",True), ("G","G",True)],
+            "p-basurero-rect":  [("G","G",True), ("X","X",False)],
+            "p-basurero-cil":   [("D","D",True), ("G","G",True), ("X","X",False)],
+            "p-carro-bandejero":[("C","C",False), ("G","G",True)],
+            "p-carro-traslado": [("G","G",True), ("C","C",False)],
+            "p-sumidero":       [("G","G",True)],
+            "p-lavadero":       [("C","C",False), ("G","G",True)],
+            "p-laser":          [("X","X",False), ("D","D",True)],
+            "p-electrico":      [("C","C",False), ("G","G",True)],
+            "p-campana":        [("G","G",True)],
+            "p-refrigerado":    [("C","C",False)],
+            "p-rejilla":        [("C","C",False), ("G","G",True)],
+            "p-tina":           [("C","C",False), ("G","G",True)],
+            "p-custom":         [("G","G",True), ("C","C",False)],
+        }
+
+    result = {}
+    for perfil, pdata in _RULES["profiles"].items():
+        drivers = []
+        # Primary drivers first, then secondary
+        for d in pdata.get("primary_drivers", []):
+            avail = _DRIVER_DB_AVAILABLE.get(d, False)
+            drivers.append((d, d, avail))
+        for d in pdata.get("secondary_drivers", []):
+            if d not in pdata.get("primary_drivers", []):
+                avail = _DRIVER_DB_AVAILABLE.get(d, False)
+                drivers.append((d, d, avail))
+        if drivers:
+            result[perfil] = drivers
+    return result
+
+PROFILE_DRIVERS = _build_profile_drivers()
 
 # Profiles where G alone is NOT the primary driver
 # (G inversions in these are EXPECTED — don't flag as contradiction)
-G_NOT_PRIMARY = {"p-meson", "p-cocina-gas", "p-carro-bandejero",
-                 "p-lavadero", "p-electrico", "p-refrigerado",
-                 "p-rejilla", "p-tina", "p-custom"}
+# Derived from PROCESS_RULES.json g_is_primary field when available.
+def _build_g_not_primary():
+    if _RULES and "profiles" in _RULES:
+        return {p for p, d in _RULES["profiles"].items() if not d.get("g_is_primary", True)}
+    return {"p-meson", "p-cocina-gas", "p-carro-bandejero",
+            "p-lavadero", "p-electrico", "p-refrigerado",
+            "p-rejilla", "p-tina", "p-custom"}
+
+G_NOT_PRIMARY = _build_g_not_primary()
 
 # ─── Load data ────────────────────────────────────────────────────────────────
 
@@ -546,6 +614,8 @@ def main():
     print(f"\n{'='*65}")
     print(f"DULOX MODEL AUDITOR — {date.today()}")
     print(f"DB: {DB.name}")
+    rules_src = f"PROCESS_RULES.json v{_RULES['meta']['version']}" if _RULES else "fallback hardcoded"
+    print(f"Reglas: {rules_src}  |  G≥{_G_BREAKPOINTS}mm²  D≥{_D_BREAKPOINTS}mm")
     print(f"{'='*65}")
 
     df = load_db()

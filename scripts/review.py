@@ -13,6 +13,8 @@ Views:
   📊 Dashboard            — validation progress + ICM components
 """
 
+import re
+import requests
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -285,6 +287,27 @@ def mark_validated(handle, reviewer):
     conn.close()
     st.cache_data.clear()
 
+# ─── Product image fetcher ───────────────────────────────────────────────────
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_product_image(url: str) -> str | None:
+    """
+    Fetch og:image URL from a Shopify product page.
+    Returns the CDN image URL string, or None on failure.
+    Cached for 1h per URL — only one HTTP request per product per session.
+    """
+    if not url:
+        return None
+    try:
+        resp = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\'](https://[^"\']+)["\']', resp.text)
+        if not match:
+            match = re.search(r'<meta[^>]+content=["\'](https://[^"\']+)["\'][^>]+property=["\']og:image["\']', resp.text)
+        return match.group(1).split("?")[0] if match else None
+    except Exception:
+        return None
+
+
 # ─── Audit candidates (replicate Test 3 logic) ────────────────────────────────
 
 def compute_candidates(df):
@@ -462,11 +485,25 @@ def product_card(row, reviewer_key="reviewer"):
     validated    = row.get("validated", 0)
 
     url = row.get("url", "")
-    url_md = f"[Ver en dulox.cl]({url})" if url else ""
+    url_md = f"[↗ dulox.cl]({url})" if url else ""
 
-    st.markdown(f"**{handle}**  {url_md}")
-    if desc:
-        st.caption(desc[:200])
+    img_col, info_col = st.columns([1, 3])
+    with img_col:
+        img_url = fetch_product_image(url)
+        if img_url:
+            st.image(img_url, use_container_width=True)
+        else:
+            st.markdown(
+                '<div style="height:100px;display:flex;align-items:center;'
+                'justify-content:center;color:#484f58;font-size:0.75rem;'
+                'border:1px solid #30363d;border-radius:6px;">sin imagen</div>',
+                unsafe_allow_html=True
+            )
+
+    with info_col:
+        st.markdown(f"**{handle}**  {url_md}")
+        if desc:
+            st.caption(desc[:200])
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -558,15 +595,23 @@ def candidate_context_card(c, df, reviewer_key):
     direction_emoji = "⬆️" if reasoning["upgrade"] else "⬇️"
     url = row.get("url", "")
     url_md = f' <a href="{url}" style="font-size:0.75rem;color:#58a6ff;" target="_blank">↗ dulox.cl</a>' if url else ""
-    st.markdown(
-        f'<div class="dulox-card">'
-        f'<div style="display:flex;align-items:center;gap:0.7rem;margin-bottom:0.5rem;">'
-        f'{direction_emoji} '
-        f'<code style="font-size:0.85rem;color:#79c0ff;background:#161b22;">{handle}</code>'
-        f'{url_md}'
-        f'</div>',
-        unsafe_allow_html=True
-    )
+
+    hdr_col, img_col = st.columns([4, 1])
+    with hdr_col:
+        st.markdown(
+            f'<div class="dulox-card">'
+            f'<div style="display:flex;align-items:center;gap:0.7rem;margin-bottom:0.5rem;">'
+            f'{direction_emoji} '
+            f'<code style="font-size:0.85rem;color:#79c0ff;background:#161b22;">{handle}</code>'
+            f'{url_md}'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with img_col:
+        img_url = fetch_product_image(url)
+        if img_url:
+            st.image(img_url, use_container_width=True)
+
     desc = str(row.get("descripcion_web", "") or "")
     if desc:
         st.markdown(
