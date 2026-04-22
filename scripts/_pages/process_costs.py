@@ -287,22 +287,30 @@ def render_hh_rates(rules: dict):
         st.session_state[_hh_skey] = pd.DataFrame(rows)
         st.session_state[_hh_hkey] = _hh_hash
 
-    edited = st.data_editor(
-        st.session_state[_hh_skey],
-        column_config={
-            "Proceso": st.column_config.TextColumn("Proceso", disabled=True, width="medium"),
-            "CLP/hora": st.column_config.NumberColumn(
-                "CLP / hora", min_value=0, max_value=100000, step=500,
-                format="$ %d", width="medium",
-                help="Tarifa real de mano de obra incluyendo leyes sociales"
-            ),
-        },
-        use_container_width=False,
-        hide_index=True,
-        num_rows="dynamic",
-        key="hh_editor",
-    )
-    st.session_state[_hh_skey] = edited  # write back so edits survive rerun
+    with st.form("hh_rates_form"):
+        edited = st.data_editor(
+            st.session_state[_hh_skey],
+            column_config={
+                "Proceso": st.column_config.TextColumn("Proceso", disabled=True, width="medium"),
+                "CLP/hora": st.column_config.NumberColumn(
+                    "CLP / hora", min_value=0, max_value=100000, step=500,
+                    format="$ %.0f", width="medium",
+                    help="Tarifa real de mano de obra incluyendo leyes sociales"
+                ),
+            },
+            use_container_width=False,
+            hide_index=True,
+            num_rows="dynamic",
+        )
+        submitted = st.form_submit_button("💾 Guardar tarifas HH en PROCESS_RULES.json", type="primary")
+
+    if submitted:
+        st.session_state[_hh_skey] = edited
+        new_rates = {row["Proceso"]: int(row["CLP/hora"]) for _, row in edited.iterrows() if row["Proceso"]}
+        rules["hh_rates"] = new_rates
+        rules["meta"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+        save_rules(rules)
+        st.success("✅ Tarifas HH guardadas.")
 
     # Reference card
     st.markdown(
@@ -316,13 +324,6 @@ def render_hh_rates(rules: dict):
         + '</b></div></div>',
         unsafe_allow_html=True
     )
-
-    if st.button("💾 Guardar tarifas HH en PROCESS_RULES.json", type="primary"):
-        new_rates = {row["Proceso"]: int(row["CLP/hora"]) for _, row in edited.iterrows() if row["Proceso"]}
-        rules["hh_rates"] = new_rates
-        rules["meta"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
-        save_rules(rules)
-        st.success("✅ Tarifas HH guardadas.")
 
 
 # ─── Tab 2: Process Templates ─────────────────────────────────────────────────
@@ -483,63 +484,67 @@ def render_consumables(rules: dict):
 
     for proc in all_procs:
         with st.expander(f"🔩 {proc}", expanded=False):
-            new_levels = {}
-
+            # Seed session state from catalog before rendering the form
+            _proc_rows = {}
             for lvl in ["C1", "C2", "C3"]:
-                badge_cls = {"C1":"badge-c1","C2":"badge-c2","C3":"badge-c3"}[lvl]
-                st.markdown(
-                    f'<span class="badge {badge_cls}" style="margin:0.6rem 0 0.3rem 0;display:inline-block;">{lvl}</span>',
-                    unsafe_allow_html=True
-                )
-
                 default_rows = catalog.get(proc, {}).get(lvl, [])
-                # Strip any stale Total column from saved data before rendering
                 df_rows = [
                     {"Producto": r.get("Producto",""), "Unidad": r.get("Unidad","u"),
                      "Cantidad": r.get("Cantidad", 0), "Precio_u": r.get("Precio_u", 0)}
                     for r in default_rows
                 ] if default_rows else [{"Producto": "", "Unidad": "u", "Cantidad": 0, "Precio_u": 0}]
 
-                _cons_ekey = f"cons_{proc}_{lvl}"
-                _cons_skey = f"df_{_cons_ekey}"
-                _cons_hkey = f"hash_{_cons_ekey}"
+                _cons_skey = f"df_cons_{proc}_{lvl}"
+                _cons_hkey = f"hash_cons_{proc}_{lvl}"
                 _cons_hash = hash(str(df_rows))
                 if st.session_state.get(_cons_hkey) != _cons_hash or _cons_skey not in st.session_state:
                     st.session_state[_cons_skey] = pd.DataFrame(df_rows)
                     st.session_state[_cons_hkey] = _cons_hash
+                _proc_rows[lvl] = (_cons_skey, _cons_hkey, _cons_hash, df_rows)
 
-                edited = st.data_editor(
-                    st.session_state[_cons_skey],
-                    key=_cons_ekey,
-                    use_container_width=True,
-                    num_rows="dynamic",
-                    column_config=COL_CFG,
-                    hide_index=True,
-                )
-                st.session_state[_cons_skey] = edited  # write back so edits survive rerun
+            with st.form(f"cons_form_{proc}"):
+                new_levels = {}
+                for lvl in ["C1", "C2", "C3"]:
+                    _cons_skey, _cons_hkey, _cons_hash, df_rows = _proc_rows[lvl]
+                    badge_cls = {"C1":"badge-c1","C2":"badge-c2","C3":"badge-c3"}[lvl]
+                    st.markdown(
+                        f'<span class="badge {badge_cls}" style="margin:0.6rem 0 0.3rem 0;display:inline-block;">{lvl}</span>',
+                        unsafe_allow_html=True
+                    )
+                    edited = st.data_editor(
+                        st.session_state[_cons_skey],
+                        use_container_width=True,
+                        num_rows="dynamic",
+                        column_config=COL_CFG,
+                        hide_index=True,
+                    )
+                    if isinstance(edited, pd.DataFrame):
+                        cant  = edited["Cantidad"].fillna(0)
+                        price = edited["Precio_u"].fillna(0)
+                        total = int((cant * price).sum())
+                        rows_to_save = edited.copy()
+                        rows_to_save["Total"] = (cant * price).round().astype(int)
+                        new_levels[lvl] = (edited, rows_to_save.to_dict("records"), total)
+                    else:
+                        new_levels[lvl] = (None, df_rows, 0)
 
-                if isinstance(edited, pd.DataFrame):
-                    cant  = edited["Cantidad"].fillna(0)
-                    price = edited["Precio_u"].fillna(0)
-                    total = int((cant * price).sum())
-                    # Save with computed Total for downstream use
-                    rows_to_save = edited.copy()
-                    rows_to_save["Total"] = (cant * price).round().astype(int)
-                    new_levels[lvl] = rows_to_save.to_dict("records")
-                else:
-                    total = 0
-                    new_levels[lvl] = df_rows
+                    st.markdown(
+                        f'<div style="font-size:0.8rem;color:#3fb950;text-align:right;margin-bottom:0.6rem;">'
+                        f'Total {lvl}: <b>{fmt_clp(new_levels[lvl][2])}</b></div>',
+                        unsafe_allow_html=True
+                    )
 
-                st.markdown(
-                    f'<div style="font-size:0.8rem;color:#3fb950;text-align:right;margin-bottom:0.6rem;">'
-                    f'Total {lvl}: <b>{fmt_clp(total)}</b></div>',
-                    unsafe_allow_html=True
-                )
+                cons_submitted = st.form_submit_button(f"💾 Guardar {proc}", type="primary")
 
-            if st.button(f"💾 Guardar {proc}", key=f"save_cons_{proc}", type="primary"):
+            if cons_submitted:
+                for lvl in ["C1", "C2", "C3"]:
+                    _cons_skey, _cons_hkey, _cons_hash, _ = _proc_rows[lvl]
+                    edited_df, _, _ = new_levels[lvl]
+                    if edited_df is not None:
+                        st.session_state[_cons_skey] = edited_df
                 if "process_consumables" not in rules:
                     rules["process_consumables"] = {}
-                rules["process_consumables"][proc] = new_levels
+                rules["process_consumables"][proc] = {lvl: new_levels[lvl][1] for lvl in ["C1","C2","C3"]}
                 rules["meta"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
                 save_rules(rules)
                 st.success(f"✅ Consumibles de {proc} guardados.")
