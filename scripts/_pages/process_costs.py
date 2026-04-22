@@ -302,6 +302,7 @@ def render_hh_rates(rules: dict):
         num_rows="dynamic",
         key="hh_editor",
     )
+    st.session_state[_hh_skey] = edited  # write back so edits survive rerun
 
     # Reference card
     st.markdown(
@@ -515,6 +516,7 @@ def render_consumables(rules: dict):
                     column_config=COL_CFG,
                     hide_index=True,
                 )
+                st.session_state[_cons_skey] = edited  # write back so edits survive rerun
 
                 if isinstance(edited, pd.DataFrame):
                     cant  = edited["Cantidad"].fillna(0)

@@ -473,6 +473,7 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         use_container_width=True, num_rows="dynamic",
         column_config=MAT_CFG, hide_index=True,
     )
+    st.session_state[_mat_skey] = mat_df  # write back so edits survive rerun
 
     st.markdown("**🔩 Consumibles**")
     cons_df = st.data_editor(
@@ -480,6 +481,7 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         use_container_width=True, num_rows="dynamic",
         column_config=CONS_CFG, hide_index=True,
     )
+    st.session_state[_cons_skey] = cons_df  # write back so edits survive rerun
 
     # Totals
     mat_total  = 0

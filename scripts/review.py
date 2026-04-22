@@ -324,6 +324,7 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
             "kg_ml":     st.column_config.NumberColumn("kg / ML / u"),
         }
     )
+    st.session_state[_mat_skey] = mat_df  # write back so edits survive rerun
 
     st.markdown('<div class="dulox-section-label" style="margin:0.5rem 0 0.35rem 0;">CONSUMIBLES</div>', unsafe_allow_html=True)
     cons_df = st.data_editor(
@@ -338,6 +339,7 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
             "Cantidad": st.column_config.NumberColumn("Cant."),
         }
     )
+    st.session_state[_cons_skey] = cons_df  # write back so edits survive rerun
 
     mat_total  = int(mat_df["total"].fillna(0).sum())  if isinstance(mat_df, pd.DataFrame) and "total"  in mat_df.columns else 0
     cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total"  in cons_df.columns else 0

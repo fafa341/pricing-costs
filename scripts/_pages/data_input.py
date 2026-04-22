@@ -344,6 +344,7 @@ def render_drivers_cx(df: pd.DataFrame, profile_key: str, rules: dict):
         num_rows="fixed",
         key=_cx_ekey,
     )
+    st.session_state[_cx_skey] = edited  # write back so edits survive rerun
 
     # ── Live score preview ──
     st.markdown('<div class="sec-label" style="margin:0.8rem 0 0.4rem 0;">VISTA PREVIA — SCORE CALCULADO</div>', unsafe_allow_html=True)
