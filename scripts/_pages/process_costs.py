@@ -294,7 +294,7 @@ def render_hh_rates(rules: dict):
                 "Proceso": st.column_config.TextColumn("Proceso", disabled=True, width="medium"),
                 "CLP/hora": st.column_config.NumberColumn(
                     "CLP / hora", min_value=0, max_value=100000, step=500,
-                    format="$ %.0f", width="medium",
+                    format="%.0f", width="medium",
                     help="Tarifa real de mano de obra incluyendo leyes sociales"
                 ),
             },
@@ -479,7 +479,7 @@ def render_consumables(rules: dict):
         "Producto": st.column_config.TextColumn("Producto", width="large"),
         "Unidad":   st.column_config.SelectboxColumn("Unidad", options=["u","kg","L","m","ml","hr"], width="small"),
         "Cantidad": st.column_config.NumberColumn("Cant.",     min_value=0, step=0.001, format="%.3f", width="small"),
-        "Precio_u": st.column_config.NumberColumn("Precio u. $", min_value=0, step=1,  format="$ %.0f", width="medium"),
+        "Precio_u": st.column_config.NumberColumn("Precio u. $", min_value=0, step=1,  format="%.0f", width="medium"),
     }
 
     for proc in all_procs:

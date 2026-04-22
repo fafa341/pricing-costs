@@ -389,12 +389,12 @@ def bom_editor(label, default_rows, key):
         use_container_width=True,
         num_rows="dynamic",
         column_config={
-            "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", disabled=True),
-            "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="$ %.0f", step=1),
+            "total":     st.column_config.NumberColumn("Total $",     format="%.0f", disabled=True),
+            "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="%.0f", step=1),
             "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f",   step=0.0001),
             "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f",   step=0.001),
-            "Precio_u":  st.column_config.NumberColumn("Precio u.",   format="$ %.0f", step=1),
-            "Total":     st.column_config.NumberColumn("Total cons.",  format="$ %.0f", disabled=True),
+            "Precio_u":  st.column_config.NumberColumn("Precio u.",   format="%.0f", step=1),
+            "Total":     st.column_config.NumberColumn("Total cons.",  format="%.0f", disabled=True),
         },
         hide_index=True,
     )
@@ -2196,8 +2196,8 @@ def render_bom_entry(rules, profile_key):
                     st.session_state[_mat_skey],
                     use_container_width=True, num_rows="dynamic", hide_index=True,
                     column_config={
-                        "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", disabled=True),
-                        "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="$ %.0f", step=1),
+                        "total":     st.column_config.NumberColumn("Total $",     format="%.0f", disabled=True),
+                        "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="%.0f", step=1),
                         "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f",   step=0.0001),
                         "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f",   step=0.001),
                     },
@@ -2207,8 +2207,8 @@ def render_bom_entry(rules, profile_key):
                     st.session_state[_cons_skey],
                     use_container_width=True, num_rows="dynamic", hide_index=True,
                     column_config={
-                        "Precio_u": st.column_config.NumberColumn("Precio u.", format="$ %.0f", step=1),
-                        "Total":    st.column_config.NumberColumn("Total cons.", format="$ %.0f", disabled=True),
+                        "Precio_u": st.column_config.NumberColumn("Precio u.", format="%.0f", step=1),
+                        "Total":    st.column_config.NumberColumn("Total cons.", format="%.0f", disabled=True),
                         "Cantidad": st.column_config.NumberColumn("Cant.",      format="%.3f",   step=0.001),
                     },
                 )
@@ -2346,9 +2346,9 @@ def render_bom_entry(rules, profile_key):
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Mat. est.":    st.column_config.NumberColumn("Mat. est. $", format="$ %d"),
-                "Cons. est.":   st.column_config.NumberColumn("Cons. est. $", format="$ %d"),
-                "Total est. $": st.column_config.NumberColumn("Total est. $", format="$ %d"),
+                "Mat. est.":    st.column_config.NumberColumn("Mat. est. $", format="%.0f"),
+                "Cons. est.":   st.column_config.NumberColumn("Cons. est. $", format="%.0f"),
+                "Total est. $": st.column_config.NumberColumn("Total est. $", format="%.0f"),
                 "factor_escala":st.column_config.NumberColumn("f_escala", format="%.3f"),
             }
         )

@@ -319,8 +319,8 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", disabled=True),
-            "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="$ %.0f", step=1),
+            "total":     st.column_config.NumberColumn("Total $",     format="%.0f", disabled=True),
+            "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="%.0f", step=1),
             "kg_ml":     st.column_config.NumberColumn("kg / ML / u", format="%.4f",   step=0.0001),
             "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f",   step=0.001),
         }
@@ -335,8 +335,8 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "Total":    st.column_config.NumberColumn("Total $",  format="$ %.0f", step=1),
-            "Precio_u": st.column_config.NumberColumn("Precio u.", format="$ %.0f", step=1),
+            "Total":    st.column_config.NumberColumn("Total $",  format="%.0f", step=1),
+            "Precio_u": st.column_config.NumberColumn("Precio u.", format="%.0f", step=1),
             "Cantidad": st.column_config.NumberColumn("Cant.",     format="%.3f",   step=0.001),
         }
     )
