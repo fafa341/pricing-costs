@@ -53,9 +53,21 @@ def load_rules() -> dict:
         return {}
 
 
+def _sanitize_nan(obj):
+    """Recursively replace NaN/Inf floats with None so JSON serialization doesn't crash."""
+    if isinstance(obj, float):
+        return None if (obj != obj or obj == float('inf') or obj == float('-inf')) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_nan(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_nan(v) for v in obj]
+    return obj
+
+
 def save_rules(rules: dict) -> None:
     """Persist updated rules to app_settings and bust cache."""
-    get_sb().table("app_settings").upsert({"key": "process_rules", "value": rules}).execute()
+    clean = _sanitize_nan(rules)
+    get_sb().table("app_settings").upsert({"key": "process_rules", "value": clean}).execute()
     load_rules.clear()
 
 

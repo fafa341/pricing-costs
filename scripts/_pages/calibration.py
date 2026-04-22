@@ -2348,7 +2348,7 @@ def render_bom_entry(rules, profile_key):
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 
-def main():
+def main(key_suffix: str = ""):
     st.markdown(CSS, unsafe_allow_html=True)
     st.markdown(
         '<h2 style="border-bottom:1px solid #21262d;padding-bottom:0.5rem;">'
@@ -2364,7 +2364,7 @@ def main():
     with col_prof:
         profile_key = st.selectbox("Perfil proceso", available_profiles,
                                    index=available_profiles.index("p-basurero-cil") if "p-basurero-cil" in available_profiles else 0,
-                                   key="cal_profile_key")
+                                   key=f"cal_profile_key{key_suffix}")
     profile_rules = rules["profiles"][profile_key]
     with col_info:
         primary = ", ".join(profile_rules.get("primary_drivers", []))
@@ -2445,4 +2445,5 @@ def main():
         render_icm(rules, profile_key)
 
 
-main()
+if __name__ == "__main__":
+    main()

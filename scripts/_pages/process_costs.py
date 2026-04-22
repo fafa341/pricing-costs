@@ -608,4 +608,5 @@ def main():
         render_consumables(rules)
 
 
-main()
+if __name__ == "__main__":
+    main()

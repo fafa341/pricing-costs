@@ -362,7 +362,13 @@ def render_drivers_cx(df: pd.DataFrame, profile_key: str, rules: dict):
                     if erow.get(f"X: {x_defs[flag]['label'][:20]}", False)]
 
         _raw_c = erow.get(c_col_name, 0)
-        c_val = int(np.nan_to_num(_raw_c, nan=0.0)) if c_driver_field else None
+        try:
+            _raw_c_f = float(_raw_c) if _raw_c is not None else 0.0
+            if _raw_c_f != _raw_c_f:  # NaN check (NaN != NaN)
+                _raw_c_f = 0.0
+            c_val = int(_raw_c_f) if c_driver_field else None
+        except (TypeError, ValueError):
+            c_val = 0 if c_driver_field else None
         mock_row = {
             "G": orig["G"], "D": orig["D"],
             "c_value": c_val,
@@ -702,4 +708,5 @@ def main():
         render_x_manager(profile_key, rules)
 
 
-main()
+if __name__ == "__main__":
+    main()
