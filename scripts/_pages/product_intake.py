@@ -467,39 +467,51 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         st.session_state[_cons_skey] = pd.DataFrame(cons_default)
         st.session_state[_cons_hkey] = _cons_hash
 
-    st.markdown("**📋 Materiales (BOM)**")
-    mat_df = st.data_editor(
-        st.session_state[_mat_skey], key=f"bom_mat_{key_prefix}",
-        use_container_width=True, num_rows="dynamic",
-        column_config=MAT_CFG, hide_index=True,
-    )
-    st.session_state[_mat_skey] = mat_df  # write back so edits survive rerun
+    _result_skey = f"result_bom_{key_prefix}"
 
-    st.markdown("**🔩 Consumibles**")
-    cons_df = st.data_editor(
-        st.session_state[_cons_skey], key=f"bom_cons_{key_prefix}",
-        use_container_width=True, num_rows="dynamic",
-        column_config=CONS_CFG, hide_index=True,
-    )
-    st.session_state[_cons_skey] = cons_df  # write back so edits survive rerun
+    with st.form(f"bom_form_{key_prefix}"):
+        st.markdown("**📋 Materiales (BOM)**")
+        mat_df = st.data_editor(
+            st.session_state[_mat_skey],
+            use_container_width=True, num_rows="dynamic",
+            column_config=MAT_CFG, hide_index=True,
+        )
+        st.markdown("**🔩 Consumibles**")
+        cons_df = st.data_editor(
+            st.session_state[_cons_skey],
+            use_container_width=True, num_rows="dynamic",
+            column_config=CONS_CFG, hide_index=True,
+        )
+        bom_submitted = st.form_submit_button("📊 Recalcular costos", use_container_width=True)
 
-    # Totals
-    mat_total  = 0
-    cons_total = 0
-    mat_rows   = mat_default
-    cons_rows  = cons_default
+    if bom_submitted:
+        st.session_state[_mat_skey]  = mat_df
+        st.session_state[_cons_skey] = cons_df
 
-    if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
-        mat_df = mat_df.copy()
-        mat_df["total"] = (mat_df["kg_ml"].fillna(0) * mat_df["precio_kg"].fillna(0)).round().astype(int)
-        mat_total = int(mat_df["total"].sum())
-        mat_rows  = mat_df.to_dict("records")
+        mat_total  = 0
+        cons_total = 0
+        mat_rows   = mat_default
+        cons_rows  = cons_default
 
-    if isinstance(cons_df, pd.DataFrame) and not cons_df.empty:
-        cons_df = cons_df.copy()
-        cons_df["Total"] = (cons_df["Cantidad"].fillna(0) * cons_df["Precio_u"].fillna(0)).round().astype(int)
-        cons_total = int(cons_df["Total"].sum())
-        cons_rows  = cons_df.to_dict("records")
+        if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
+            _m = mat_df.copy()
+            _m["total"] = (_m["kg_ml"].fillna(0) * _m["precio_kg"].fillna(0)).round().astype(int)
+            mat_total = int(_m["total"].sum())
+            mat_rows  = _m.to_dict("records")
+
+        if isinstance(cons_df, pd.DataFrame) and not cons_df.empty:
+            _c = cons_df.copy()
+            _c["Total"] = (_c["Cantidad"].fillna(0) * _c["Precio_u"].fillna(0)).round().astype(int)
+            cons_total = int(_c["Total"].sum())
+            cons_rows  = _c.to_dict("records")
+
+        st.session_state[_result_skey] = (mat_rows, cons_rows, mat_total, cons_total)
+
+    # Use last committed result (persists between reruns)
+    if _result_skey in st.session_state:
+        mat_rows, cons_rows, mat_total, cons_total = st.session_state[_result_skey]
+    else:
+        mat_rows, cons_rows, mat_total, cons_total = mat_default, cons_default, 0, 0
 
     col_a, col_b, col_c = st.columns(3)
     col_a.metric("Material", f"${mat_total:,}")

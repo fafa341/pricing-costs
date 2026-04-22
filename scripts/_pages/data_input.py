@@ -322,29 +322,32 @@ def render_drivers_cx(df: pd.DataFrame, profile_key: str, rules: dict):
             help=f"{x_defs[flag].get('description', '')} (+{x_defs[flag]['points']} pts)"
         )
 
-    st.markdown(
-        f'<div class="sec-label" style="margin-bottom:0.4rem;">'
-        f'{len(df)} PRODUCTOS — edita C y X inline, luego guarda</div>',
-        unsafe_allow_html=True
-    )
-
-    _cx_ekey = f"cx_editor_{profile_key}"
-    _cx_skey = f"df_{_cx_ekey}"
-    _cx_hkey = f"hash_{_cx_ekey}"
+    _cx_skey = f"df_cx_editor_{profile_key}"
+    _cx_hkey = f"hash_cx_editor_{profile_key}"
     _cx_hash = hash(str(edit_df.values.tolist()) + str(list(edit_df.columns)))
     if st.session_state.get(_cx_hkey) != _cx_hash or _cx_skey not in st.session_state:
         st.session_state[_cx_skey] = edit_df
         st.session_state[_cx_hkey] = _cx_hash
 
-    edited = st.data_editor(
-        st.session_state[_cx_skey],
-        column_config=col_config,
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key=_cx_ekey,
-    )
-    st.session_state[_cx_skey] = edited  # write back so edits survive rerun
+    with st.form(f"cx_form_{profile_key}"):
+        st.markdown(
+            f'<div class="sec-label" style="margin-bottom:0.4rem;">'
+            f'{len(df)} PRODUCTOS — edita C y X inline, luego guarda</div>',
+            unsafe_allow_html=True
+        )
+        form_edited = st.data_editor(
+            st.session_state[_cx_skey],
+            column_config=col_config,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+        )
+        cx_submitted = st.form_submit_button("📊 Calcular score")
+
+    if cx_submitted:
+        st.session_state[_cx_skey] = form_edited
+
+    edited = st.session_state[_cx_skey]
 
     # ── Live score preview ──
     st.markdown('<div class="sec-label" style="margin:0.8rem 0 0.4rem 0;">VISTA PREVIA — SCORE CALCULADO</div>', unsafe_allow_html=True)
