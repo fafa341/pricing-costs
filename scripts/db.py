@@ -145,16 +145,19 @@ def save_product(product: dict) -> tuple[bool, str]:
 
 def save_product_batch(updates: list[dict]) -> None:
     """
-    Batch-update c_value + x_flags for a list of {handle, c_value, x_flags}.
+    Batch-update c_value, x_flags, and optionally complejidad for a list of products.
     x_flags may be a list — serialised to JSON string here.
     """
     sb = get_sb()
     for u in updates:
         x = u.get("x_flags", [])
-        sb.table("products").update({
+        payload = {
             "c_value": u.get("c_value"),
             "x_flags": json.dumps(x) if isinstance(x, list) else x,
-        }).eq("handle", u["handle"]).execute()
+        }
+        if u.get("complejidad") is not None:
+            payload["complejidad"] = u["complejidad"]
+        sb.table("products").update(payload).eq("handle", u["handle"]).execute()
     load_all_products.clear()
 
 

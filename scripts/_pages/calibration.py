@@ -2135,6 +2135,9 @@ def render_bom_entry(rules, profile_key):
         e = float(anchor_row.get("dim_espesor_mm") or 0)
         G_v = anchor_row.get("G")
         D_v = anchor_row.get("D")
+        C_v = anchor_row.get("c_value")
+        _xf_raw = anchor_row.get("x_flags", "[]") or "[]"
+        x_flags_saved = json.loads(_xf_raw) if isinstance(_xf_raw, str) else (_xf_raw or [])
 
         # Load saved BOM from DB
         saved_mat_json  = anchor_row.get("bom_materials",  "[]") or "[]"
@@ -2147,8 +2150,9 @@ def render_bom_entry(rules, profile_key):
             saved_mat  = BARE4_MATERIALS_DEFAULT
             saved_cons = BARE4_CONSUMABLES_DEFAULT
 
+        _x_label = ", ".join(x_flags_saved) if x_flags_saved else "—"
         with st.expander(
-            f"📦 BOM del ancla: {selected_anchor}  ·  G={G_v or '—'} D={D_v or '—'} e={e}mm",
+            f"📦 BOM del ancla: {selected_anchor}  ·  G={G_v or '—'} D={D_v or '—'} C={C_v or '—'} X=[{_x_label}]",
             expanded=bool(anchor_handle == selected_anchor)
         ):
             # Dimension override row
@@ -2161,9 +2165,21 @@ def render_bom_entry(rules, profile_key):
             G_new, area = compute_G(L, W, H, rules)
             D_new = compute_D(e, rules)
             area_str = f"{area/1e6:.3f} m²" if area else "—"
+            _profile_rules = rules["profiles"].get(profile_key, {})
+            _x_defs = _profile_rules.get("x_flags", {})
+            _c_driver_field = _profile_rules.get("c_driver")
+            _c_label = C_DRIVER_LABELS.get(_c_driver_field, _c_driver_field or "C") if _c_driver_field else "C"
+            _x_badges = " ".join(
+                f'<span style="background:#1f3a5f;color:#79c0ff;border-radius:4px;padding:1px 6px;font-size:0.75rem;">'
+                f'{_x_defs[xf]["label"] if xf in _x_defs else xf}</span>'
+                for xf in x_flags_saved
+            ) or '<span style="color:#484f58;font-size:0.78rem;">ninguna</span>'
             st.markdown(
-                f'<div style="font-size:0.8rem;color:#79c0ff;margin-bottom:0.6rem;">'
-                f'G={G_new or "—"} · D={D_new or "—"} · Área={area_str}</div>',
+                f'<div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:0.6rem;font-size:0.8rem;">'
+                f'<span style="color:#79c0ff;">G={G_new or "—"} · D={D_new or "—"} · Área={area_str}</span>'
+                f'<span style="color:#cdd9e5;">{_c_label}={C_v or "—"}</span>'
+                f'<span>X: {_x_badges}</span>'
+                f'</div>',
                 unsafe_allow_html=True
             )
 

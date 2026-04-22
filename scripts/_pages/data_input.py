@@ -407,7 +407,10 @@ def render_drivers_cx(df: pd.DataFrame, profile_key: str, rules: dict):
                             if erow.get(f"X: {x_defs[flag]['label'][:20]}", False)]
                 _raw_c2 = erow.get(c_col_name, 0)
                 c_val = int(np.nan_to_num(_raw_c2, nan=0.0)) if c_driver_field else None
-                updates.append({"handle": handle, "c_value": c_val, "x_flags": x_active})
+                # Get computed complejidad from preview
+                pr = next((r for r in preview_rows if r["Handle"] == handle), None)
+                computed_comp = pr["Comp. calculada"] if pr else erow.get("Comp.", None)
+                updates.append({"handle": handle, "c_value": c_val, "x_flags": x_active, "complejidad": computed_comp})
             save_product_batch(updates)
             st.success(f"✅ {len(updates)} productos actualizados.")
 
