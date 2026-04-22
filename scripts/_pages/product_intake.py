@@ -439,15 +439,15 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         "Subconjunto": st.column_config.TextColumn("Subconjunto", width="medium"),
         "Dimensiones": st.column_config.TextColumn("Dimensiones", width="medium"),
         "Material":    st.column_config.TextColumn("Material", width="large"),
-        "kg_ml":       st.column_config.NumberColumn("kg/ML/u", min_value=0, step=0.1),
-        "precio_kg":   st.column_config.NumberColumn("$/kg o $/u", format="$ %d", min_value=0),
+        "kg_ml":       st.column_config.NumberColumn("kg/ML/u",    min_value=0, step=0.0001, format="%.4f"),
+        "precio_kg":   st.column_config.NumberColumn("$/kg o $/u", min_value=0, step=1,      format="$ %.0f"),
     }
     CONS_CFG = {
         "Producto":  st.column_config.TextColumn("Producto", width="large"),
         "Proceso":   st.column_config.TextColumn("Proceso", width="medium"),
-        "Cantidad":  st.column_config.NumberColumn("Cant.", min_value=0, step=0.5),
+        "Cantidad":  st.column_config.NumberColumn("Cant.",    min_value=0, step=0.001, format="%.3f"),
         "Unidad":    st.column_config.SelectboxColumn("Unidad", options=["u","kg","L","m","ml","hr"]),
-        "Precio_u":  st.column_config.NumberColumn("Precio u. $", format="$ %d", min_value=0),
+        "Precio_u":  st.column_config.NumberColumn("Precio u. $", min_value=0, step=1,  format="$ %.0f"),
     }
 
     mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","kg_ml":0.0,"precio_kg":3600}]

@@ -319,9 +319,9 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "total":     st.column_config.NumberColumn("Total $", format="$ %d"),
-            "precio_kg": st.column_config.NumberColumn("$/kg o $/u", format="$ %d"),
-            "kg_ml":     st.column_config.NumberColumn("kg / ML / u"),
+            "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", step=1),
+            "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="$ %.0f", step=1),
+            "kg_ml":     st.column_config.NumberColumn("kg / ML / u", format="%.4f",   step=0.0001),
         }
     )
     st.session_state[_mat_skey] = mat_df  # write back so edits survive rerun
@@ -334,9 +334,9 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "Total":    st.column_config.NumberColumn("Total $", format="$ %d"),
-            "Precio_u": st.column_config.NumberColumn("Precio u.", format="$ %d"),
-            "Cantidad": st.column_config.NumberColumn("Cant."),
+            "Total":    st.column_config.NumberColumn("Total $",  format="$ %.0f", step=1),
+            "Precio_u": st.column_config.NumberColumn("Precio u.", format="$ %.0f", step=1),
+            "Cantidad": st.column_config.NumberColumn("Cant.",     format="%.3f",   step=0.001),
         }
     )
     st.session_state[_cons_skey] = cons_df  # write back so edits survive rerun

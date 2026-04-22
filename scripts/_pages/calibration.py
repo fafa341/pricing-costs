@@ -389,12 +389,12 @@ def bom_editor(label, default_rows, key):
         use_container_width=True,
         num_rows="dynamic",
         column_config={
-            "total":     st.column_config.NumberColumn("Total $", format="$ %d"),
-            "precio_kg": st.column_config.NumberColumn("$/kg o $/u", format="$ %d"),
-            "kg_ml":     st.column_config.NumberColumn("kg o ML o u"),
-            "Precio_u":  st.column_config.NumberColumn("Precio u.", format="$ %d"),
-            "Total":     st.column_config.NumberColumn("Total $", format="$ %d"),
-            "Cantidad":  st.column_config.NumberColumn("Cant."),
+            "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", step=1),
+            "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="$ %.0f", step=1),
+            "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f",   step=0.0001),
+            "Precio_u":  st.column_config.NumberColumn("Precio u.",   format="$ %.0f", step=1),
+            "Total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", step=1),
+            "Cantidad":  st.column_config.NumberColumn("Cant.",        format="%.3f",   step=0.001),
         },
         hide_index=True,
     )
@@ -2191,9 +2191,9 @@ def render_bom_entry(rules, profile_key):
                     st.session_state[_mat_skey],
                     use_container_width=True, num_rows="dynamic", hide_index=True,
                     column_config={
-                        "total":     st.column_config.NumberColumn("Total $", format="$ %d"),
-                        "precio_kg": st.column_config.NumberColumn("$/kg o $/u", format="$ %d"),
-                        "kg_ml":     st.column_config.NumberColumn("kg o ML o u"),
+                        "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", step=1),
+                        "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="$ %.0f", step=1),
+                        "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f",   step=0.0001),
                     },
                 )
                 st.markdown('<div class="sec-label" style="margin-top:0.6rem;">CONSUMIBLES</div>', unsafe_allow_html=True)
@@ -2201,9 +2201,9 @@ def render_bom_entry(rules, profile_key):
                     st.session_state[_cons_skey],
                     use_container_width=True, num_rows="dynamic", hide_index=True,
                     column_config={
-                        "Precio_u": st.column_config.NumberColumn("Precio u.", format="$ %d"),
-                        "Total":    st.column_config.NumberColumn("Total $",   format="$ %d"),
-                        "Cantidad": st.column_config.NumberColumn("Cant."),
+                        "Precio_u": st.column_config.NumberColumn("Precio u.", format="$ %.0f", step=1),
+                        "Total":    st.column_config.NumberColumn("Total $",   format="$ %.0f", step=1),
+                        "Cantidad": st.column_config.NumberColumn("Cant.",      format="%.3f",   step=0.001),
                     },
                 )
                 save_clicked = st.form_submit_button(

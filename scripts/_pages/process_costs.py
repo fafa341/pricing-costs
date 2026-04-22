@@ -477,8 +477,8 @@ def render_consumables(rules: dict):
     COL_CFG = {
         "Producto": st.column_config.TextColumn("Producto", width="large"),
         "Unidad":   st.column_config.SelectboxColumn("Unidad", options=["u","kg","L","m","ml","hr"], width="small"),
-        "Cantidad": st.column_config.NumberColumn("Cant.", min_value=0, step=0.5, width="small"),
-        "Precio_u": st.column_config.NumberColumn("Precio u. $", format="$ %d", min_value=0, width="medium"),
+        "Cantidad": st.column_config.NumberColumn("Cant.",     min_value=0, step=0.001, format="%.3f", width="small"),
+        "Precio_u": st.column_config.NumberColumn("Precio u. $", min_value=0, step=1,  format="$ %.0f", width="medium"),
     }
 
     for proc in all_procs:
