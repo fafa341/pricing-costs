@@ -513,6 +513,7 @@ def render_consumables(rules: dict):
                     )
                     edited = st.data_editor(
                         st.session_state[_cons_skey],
+                        key=f"cons_editor_{proc}_{lvl}",
                         use_container_width=True,
                         num_rows="dynamic",
                         column_config=COL_CFG,
