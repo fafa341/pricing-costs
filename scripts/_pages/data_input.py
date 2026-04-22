@@ -11,16 +11,16 @@ Run:  streamlit run scripts/review.py  (this file is loaded as a page)
 """
 
 import json
-import sqlite3
+import sys
 import streamlit as st
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime
 
-ROOT       = Path(__file__).resolve().parent.parent.parent
-DB         = ROOT / "dataset" / "products.db"
-RULES_PATH = ROOT / "files-process" / "PROCESS_RULES.json"
+ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+from db import load_rules, save_rules, load_profile_products as _load_profile_products_raw, save_product_batch, save_anchor as _db_save_anchor, get_sb
 
 # ─── CSS (dark, matches review.py) ────────────────────────────────────────────
 
@@ -66,36 +66,20 @@ C_DRIVER_LABELS = {
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=30)
-def load_rules() -> dict:
-    try:
-        return json.loads(RULES_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-def save_rules(rules: dict):
-    RULES_PATH.write_text(json.dumps(rules, indent=2, ensure_ascii=False))
-    st.cache_data.clear()
-
-def get_conn():
-    conn = sqlite3.connect(DB, timeout=30, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.row_factory = sqlite3.Row
-    return conn
-
 @st.cache_data(ttl=10)
 def load_profile_products(profile_key: str) -> pd.DataFrame:
-    conn = get_conn()
-    df = pd.read_sql("""
-        SELECT handle, descripcion_web, complejidad, k_num,
-               dim_l_mm, dim_w_mm, dim_h_mm, dim_espesor_mm, dim_diameter_mm,
-               G, D, c_value, x_flags, is_anchor, validated, image_url, url
-        FROM products
-        WHERE perfil_proceso = ?
-        ORDER BY complejidad, handle
-    """, conn, params=(profile_key,))
-    conn.close()
-    # Parse x_flags JSON
+    rows = _load_profile_products_raw(profile_key)
+    if not rows:
+        return pd.DataFrame(columns=["handle","descripcion_web","complejidad","k_num",
+                                     "dim_l_mm","dim_w_mm","dim_h_mm","dim_espesor_mm",
+                                     "dim_diameter_mm","G","D","c_value","x_flags",
+                                     "is_anchor","validated","image_url","url","x_flags_parsed"])
+    df = pd.DataFrame(rows)
+    # Ensure expected columns exist
+    for col in ["k_num","dim_l_mm","dim_w_mm","dim_h_mm","dim_espesor_mm","dim_diameter_mm",
+                "G","D","c_value","x_flags","is_anchor","validated","image_url","url"]:
+        if col not in df.columns:
+            df[col] = None
     df["x_flags_parsed"] = df["x_flags"].apply(
         lambda v: json.loads(v) if isinstance(v, str) and v.strip() else []
     )
@@ -143,35 +127,9 @@ def compute_score(row, profile_rules, rules):
 
     return pts, level, " + ".join(parts) if parts else "sin datos"
 
-def save_product_batch(updates: list[dict]):
-    """Save c_value + x_flags for a list of {handle, c_value, x_flags} dicts."""
-    conn = get_conn()
-    now = datetime.now().isoformat()
-    for u in updates:
-        conn.execute("""
-            UPDATE products
-            SET c_value = ?, x_flags = ?
-            WHERE handle = ?
-        """, (u.get("c_value"), json.dumps(u.get("x_flags", [])), u["handle"]))
-    conn.commit()
-    conn.close()
-    st.cache_data.clear()
-
 def save_anchor(handle: str, profile_key: str, complejidad: str, rules: dict):
-    """Set is_anchor=1 for this product, 0 for all others in same profile+comp.
-    Also save to PROCESS_RULES.json anchors."""
-    conn = get_conn()
-    conn.execute("""
-        UPDATE products SET is_anchor = 0
-        WHERE perfil_proceso = ? AND complejidad = ?
-    """, (profile_key, complejidad))
-    conn.execute("UPDATE products SET is_anchor = 1 WHERE handle = ?", (handle,))
-    conn.commit()
-    conn.close()
-    # Save to JSON
-    rules["profiles"][profile_key]["anchors"][complejidad] = handle
-    rules["meta"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
-    save_rules(rules)
+    _db_save_anchor(handle, profile_key, complejidad, rules)
+    load_profile_products.clear()
 
 # ─── Tab 4: Manage X Flags ────────────────────────────────────────────────────
 
@@ -689,6 +647,7 @@ def main():
             "Perfil proceso",
             available_profiles,
             label_visibility="collapsed",
+            key="di_profile_key",
         )
         profile_rules = rules.get("profiles", {}).get(profile_key, {})
         n_prods = load_profile_products(profile_key)

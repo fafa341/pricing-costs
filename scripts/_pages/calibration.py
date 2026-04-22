@@ -17,7 +17,7 @@ Run:  streamlit run scripts/review.py
 
 import json
 import math
-import sqlite3
+import sys
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -25,44 +25,70 @@ from pathlib import Path
 from datetime import date, datetime
 
 ROOT         = Path(__file__).resolve().parent.parent.parent
-RULES_PATH   = ROOT / "files-process" / "PROCESS_RULES.json"
 CHUNKS_PATH  = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
-DB           = ROOT / "dataset" / "products.db"
+sys.path.insert(0, str(ROOT / "scripts"))
+from db import load_rules, save_rules, get_sb, load_profile_products as _load_profile_raw, save_bom as _save_bom_db
 
 
-def _get_conn():
-    conn = sqlite3.connect(DB, timeout=30, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.row_factory = sqlite3.Row
-    return conn
+def _load_chunks() -> list[dict]:
+    """Load all knowledge chunks from JSONL file."""
+    if not CHUNKS_PATH.exists():
+        return []
+    chunks = []
+    for line in CHUNKS_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            try:
+                chunks.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    return chunks
+
+
+def _write_chunk(chunk: dict):
+    """Append a chunk to knowledge-chunks.jsonl, superseding any prior chunk with same chunk_id."""
+    existing = _load_chunks()
+    # Mark any old chunk with the same id as superseded
+    for c in existing:
+        if c.get("chunk_id") == chunk["chunk_id"]:
+            c["metadata"]["superseded_by"] = chunk["chunk_id"] + "-new"
+            c["metadata"]["valid_until"] = str(date.today())
+    # Append new chunk
+    existing.append(chunk)
+    CHUNKS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CHUNKS_PATH.write_text(
+        "\n".join(json.dumps(c, ensure_ascii=False) for c in existing) + "\n",
+        encoding="utf-8"
+    )
+
+
+@st.cache_data(ttl=15)
+def _load_profile(profile_key: str) -> pd.DataFrame:
+    rows = _load_profile_raw(profile_key)
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    # Sort: complejidad asc, anchors first
+    if "is_anchor" in df.columns and "complejidad" in df.columns:
+        df = df.sort_values(["complejidad", "is_anchor"], ascending=[True, False]).reset_index(drop=True)
+    return df
+
 
 @st.cache_data(ttl=15)
 def _load_bucket(profile_key: str, complejidad: str) -> pd.DataFrame:
-    """Load all products for a given profile + complexity from DB."""
-    conn = _get_conn()
-    df = pd.read_sql("""
-        SELECT handle, descripcion_web, complejidad,
-               dim_l_mm, dim_w_mm, dim_h_mm, dim_espesor_mm, dim_diameter_mm,
-               G, D, c_value, x_flags, bom_materials, bom_consumables, is_anchor
-        FROM products
-        WHERE perfil_proceso = ? AND complejidad = ?
-        ORDER BY is_anchor DESC, handle
-    """, conn, params=(profile_key, complejidad))
-    conn.close()
-    return df
+    df = _load_profile(profile_key)
+    if df.empty or "complejidad" not in df.columns:
+        return pd.DataFrame()
+    return df[df["complejidad"] == complejidad].reset_index(drop=True)
+
 
 def _save_bom_to_db(handle: str, mat_df: pd.DataFrame, cons_df: pd.DataFrame):
-    """Persist BOM dataframes as JSON in products.db."""
-    mat_json  = mat_df.to_json(orient="records", force_ascii=False)
-    cons_json = cons_df.to_json(orient="records", force_ascii=False)
-    conn = _get_conn()
-    conn.execute(
-        "UPDATE products SET bom_materials=?, bom_consumables=? WHERE handle=?",
-        (mat_json, cons_json, handle)
-    )
-    conn.commit()
-    conn.close()
-    st.cache_data.clear()
+    """Persist BOM dataframes as JSON via Supabase."""
+    mat_rows  = mat_df.to_dict("records")  if isinstance(mat_df,  pd.DataFrame) else []
+    cons_rows = cons_df.to_dict("records") if isinstance(cons_df, pd.DataFrame) else []
+    _save_bom_db(handle, mat_rows, cons_rows)
+    _load_profile.clear()
+    _load_bucket.clear()
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
 
@@ -99,16 +125,6 @@ hr { border-color:#21262d !important; }
 [data-testid="stDataFrameResizable"] { border:1px solid #30363d; border-radius:8px; }
 </style>
 """
-
-# ─── Load rules ────────────────────────────────────────────────────────────────
-
-@st.cache_data
-def load_rules():
-    return json.loads(RULES_PATH.read_text())
-
-def save_rules(rules):
-    RULES_PATH.write_text(json.dumps(rules, indent=2, ensure_ascii=False))
-    st.cache_data.clear()
 
 # ─── Pre-populated BOM from measurements-p1.md ───────────────────────────────
 
@@ -1722,6 +1738,211 @@ def render_templates_editor(rules):
 
 # ─── Tab 5: Save findings ──────────────────────────────────────────────────────
 
+def render_icm(rules: dict, profile_key: str):
+    """
+    ICM — Índice de Confianza del Modelo.
+    Lean-inspired proof coverage metric:
+      Layer 1 (physical):  40% — driver fill rates (G/D/C/X) per product
+      Layer 2 (semantic):  60% — verified knowledge chunks per (process × level) combo
+
+    A claim with no backing chunk is a "sorry" — used but unproven.
+    Calibration converts sorrys into verified proofs.
+    """
+    profile_rules = rules.get("profiles", {}).get(profile_key, {})
+    df = _load_profile(profile_key)
+    chunks = _load_chunks()
+
+    # Split chunks by layer
+    profile_chunks  = [c for c in chunks
+                       if c.get("metadata", {}).get("perfil_proceso") in (profile_key, "todos")]
+    l1_chunks       = [c for c in profile_chunks if c.get("metadata", {}).get("layer") == "physical"]
+    l2_chunks       = [c for c in chunks         if c.get("metadata", {}).get("layer") == "semantic"]
+
+    # Empirically verified = measured by a person (not just bootstrapped from rules)
+    verified_l1 = [c for c in l1_chunks if
+                   c.get("metadata", {}).get("verified", False) and
+                   c.get("metadata", {}).get("confianza") not in ("estructural",)]
+    verified_l2 = [c for c in l2_chunks if c.get("metadata", {}).get("verified", False)]
+    sorry_l2    = [c for c in l2_chunks if not c.get("metadata", {}).get("verified", False)]
+
+    # ── Layer 1: driver fill rates ──────────────────────────────────────────────
+    total = max(len(df), 1)
+    has_c_driver = profile_rules.get("c_driver") is not None
+    has_x_defs   = bool(profile_rules.get("x_flags"))
+
+    g_pct = df["G"].notna().sum() / total * 100
+    d_pct = df["D"].notna().sum() / total * 100
+    c_pct = (df["c_value"].notna().sum() / total * 100) if has_c_driver else 100.0
+    x_pct = (df["x_flags"].apply(lambda v: bool(v and v not in ("[]","null","")) if pd.notna(v) else False).sum()
+             / total * 100) if has_x_defs else 100.0
+
+    active_drivers = ["G", "D"]
+    if has_c_driver: active_drivers.append("C")
+    if has_x_defs:   active_drivers.append("X")
+    driver_score = (g_pct + d_pct + c_pct + x_pct) / 4
+
+    # ── Layer 2a: empirical chunk coverage per (process × level) ────────────────
+    tiers = profile_rules.get("process_tiers", {})
+    combos = [(proc, lvl)
+              for lvl, procs in tiers.items()
+              for proc in procs]
+    total_combos = max(len(combos), 1)
+
+    claim_rows = []
+    covered = 0
+    for proc, lvl in sorted(combos):
+        # Only count empirically verified (calibration sessions), not structural bootstraps
+        matching = [c for c in verified_l1
+                    if (c.get("metadata", {}).get("proceso") == proc or
+                        c.get("metadata", {}).get("proceso") == "calibracion")
+                    and c.get("metadata", {}).get("nivel_complejidad") in (lvl, "C2→C3")]
+        proven = len(matching) > 0
+        if proven:
+            covered += 1
+        exp = (matching[0].get("metadata", {}).get("expert_id") or
+               matching[0].get("metadata", {}).get("calibrado_por", "—")) if matching else "—"
+        claim_rows.append({
+            "Proceso": proc,
+            "Nivel": lvl,
+            "Estado": "✅ medido" if proven else "❌ sorry",
+            "Expert": exp,
+        })
+
+    # ── Layer 2b: semantic mapping verification ──────────────────────────────────
+    profile_sem   = [c for c in l2_chunks
+                     if c.get("metadata", {}).get("perfil_proceso") in (profile_key, "todos")]
+    verified_sem  = [c for c in profile_sem if c.get("metadata", {}).get("verified", False)]
+    total_sem     = max(len(profile_sem), 1)
+    sem_score     = len(verified_sem) / total_sem * 100
+
+    # Chunk score = average of process coverage + semantic coverage
+    chunk_score = (covered / total_combos * 100 * 0.6 + sem_score * 0.4)
+
+    # ── ICM ─────────────────────────────────────────────────────────────────────
+    icm = round(driver_score * 0.40 + chunk_score * 0.60)
+    sorry_count = total_combos - covered
+
+    if icm >= 80:
+        card_cls, icm_color, status = "cal-card-green", "#3fb950", "Modelo calibrado"
+    elif icm >= 50:
+        card_cls, icm_color, status = "cal-card-amber", "#e3b341", "Modelo funcional"
+    else:
+        card_cls, icm_color, status = "cal-card-red",   "#f85149", "Modelo en construcción"
+
+    st.markdown(
+        f'<div class="{card_cls}">'
+        f'<div class="sec-label">ICM — ÍNDICE DE CONFIANZA DEL MODELO</div>'
+        f'<div style="font-size:3rem;font-weight:800;color:{icm_color};line-height:1.1;">'
+        f'{icm}<span style="font-size:1.2rem;color:#768390;">/100</span></div>'
+        f'<div style="font-size:0.85rem;color:#cdd9e5;margin-top:0.3rem;">{status}</div>'
+        f'<div style="font-size:0.75rem;color:#768390;margin-top:0.5rem;">'
+        f'Cálculo: Driver fill rate (40%) + Chunk coverage (60%)</div>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+    # ── Breakdown ────────────────────────────────────────────────────────────────
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown('<div class="sec-label" style="margin-top:1rem;">LAYER 1 — DRIVERS FÍSICOS</div>',
+                    unsafe_allow_html=True)
+        st.caption(f"Score: {driver_score:.0f}/100  ·  {total} productos  ·  {len(active_drivers)} drivers activos")
+        driver_table = [
+            {"Driver": "G (Geometría)",  "Disponible": f"{g_pct:.0f}%", "Productos": f"{df['G'].notna().sum()}/{total}", "Estado": "✅" if g_pct > 80 else "⚠️"},
+            {"Driver": "D (Espesor)",    "Disponible": f"{d_pct:.0f}%", "Productos": f"{df['D'].notna().sum()}/{total}", "Estado": "✅" if d_pct > 80 else "⚠️"},
+            {"Driver": f"C ({profile_rules.get('c_driver','—')})",
+             "Disponible": f"{c_pct:.0f}%" if has_c_driver else "N/A",
+             "Productos":  f"{df['c_value'].notna().sum()}/{total}" if has_c_driver else "N/A",
+             "Estado": ("✅" if c_pct > 80 else "⚠️") if has_c_driver else "—"},
+            {"Driver": f"X ({len(profile_rules.get('x_flags',{}))} flags)",
+             "Disponible": f"{x_pct:.0f}%" if has_x_defs else "N/A",
+             "Productos": "—" if not has_x_defs else f"{df['x_flags'].apply(lambda v: bool(v and v not in ('[]','null',''))).sum()}/{total}",
+             "Estado": ("✅" if x_pct > 80 else "⚠️") if has_x_defs else "—"},
+        ]
+        st.dataframe(pd.DataFrame(driver_table), use_container_width=True, hide_index=True)
+
+        if total > 0 and not df.empty:
+            worst_driver = min([("G", g_pct), ("D", d_pct)], key=lambda x: x[1])
+            missing_g = df[df["G"].isna()]["handle"].tolist()
+            if missing_g:
+                with st.expander(f"⚠️ {len(missing_g)} productos sin G"):
+                    st.code(", ".join(missing_g[:20]))
+
+    with col2:
+        st.markdown('<div class="sec-label" style="margin-top:1rem;">LAYER 2a — MEDICIONES EMPÍRICAS (proceso × nivel)</div>',
+                    unsafe_allow_html=True)
+        sorry_count = total_combos - covered
+        st.caption(
+            f"Score: {covered/total_combos*100:.0f}/100  ·  "
+            f"{covered}/{total_combos} combos medidos  ·  {sorry_count} sorry"
+        )
+        if sorry_count > 0:
+            st.markdown(
+                f'<div class="cal-card-amber" style="padding:0.5rem 0.8rem;margin:0.3rem 0;">'
+                f'<span style="font-size:0.82rem;color:#e3b341;font-weight:600;">'
+                f'⚠️ {sorry_count} combos sin medición real</span><br>'
+                f'<span style="font-size:0.72rem;color:#768390;">'
+                f'Calibrar estos combos → cada uno sube ICM ~{60/total_combos*0.6:.1f} pts</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        st.dataframe(pd.DataFrame(claim_rows), use_container_width=True, hide_index=True)
+
+        st.markdown('<div class="sec-label" style="margin-top:1rem;">LAYER 2b — MAPEOS SEMÁNTICOS (término → concepto)</div>',
+                    unsafe_allow_html=True)
+        st.caption(
+            f"Score: {sem_score:.0f}/100  ·  "
+            f"{len(verified_sem)}/{len(profile_sem)} mapeos verificados  ·  "
+            f"{len(profile_sem) - len(verified_sem)} sorry"
+        )
+        sem_rows = []
+        for c in profile_sem:
+            meta = c.get("metadata", {})
+            sem_rows.append({
+                "Término": meta.get("sem_term", c.get("chunk_id","")),
+                "Concepto": meta.get("sem_concept", "?"),
+                "Tipo": meta.get("sem_concept_type", "?"),
+                "Estado": "✅" if meta.get("verified") else "❌ sorry",
+                "Expert": meta.get("expert_id", "—") or "—",
+            })
+        if sem_rows:
+            st.dataframe(pd.DataFrame(sem_rows), use_container_width=True, hide_index=True)
+
+        st.caption(
+            f"Chunks totales: {len(chunks)}  ·  "
+            f"Bootstrap L1: {len(l1_chunks)}  ·  "
+            f"Empíricos L1: {len(verified_l1)}  ·  "
+            f"Semánticos: {len(l2_chunks)} ({len(verified_l2)} verificados)"
+        )
+
+    # ── Actionable next step ────────────────────────────────────────────────────
+    sorry_process_rows = [r for r in claim_rows if "sorry" in r["Estado"]]
+    sorry_sem_rows     = [r for r in sem_rows if "sorry" in r.get("Estado","")]
+
+    if sorry_process_rows:
+        priority = sorry_process_rows[0]
+        icm_gain = round(60 * 0.6 / total_combos, 1)
+        st.info(
+            f"**Acción de mayor impacto:** Calibra **{priority['Proceso']} × {priority['Nivel']}** "
+            f"en la pestaña 💾 Guardar Hallazgos. "
+            f"Cada combo medido sube el ICM ~{icm_gain} pts."
+        )
+    elif sorry_sem_rows:
+        priority_sem = sorry_sem_rows[0]
+        st.info(
+            f"**Próxima acción:** Verifica el mapeo semántico "
+            f"**'{priority_sem.get('Término','?')}' → {priority_sem.get('Concepto','?')}** "
+            f"con Hernán y actualiza `semantic_mappings.json`."
+        )
+    elif icm < 100:
+        low_driver = min([("G", g_pct), ("D", d_pct)], key=lambda x: x[1])
+        st.info(
+            f"**Acción de mayor impacto:** Completa el driver **{low_driver[0]}** "
+            f"para los productos que lo tienen vacío."
+        )
+
+
 def render_save_findings(products, rules, profile_key):
     st.markdown('<h3>Guardar Hallazgos de Calibración</h3>', unsafe_allow_html=True)
     st.markdown(
@@ -1746,89 +1967,106 @@ def render_save_findings(products, rules, profile_key):
 
     calibrator = st.text_input("Tu nombre (calibrador)", key="cal_by", placeholder="ej: Fabio")
 
-    if st.button("💾 Guardar calibración en PROCESS_RULES.json + generar chunk", type="primary"):
+    if st.button("💾 Guardar calibración en PROCESS_RULES.json + knowledge-chunks.jsonl", type="primary"):
         if not calibrator:
             st.error("Ingresa tu nombre.")
             return
 
-        # Update benchmarks in rules
-        if c2_data and c2_data["mat_total"] > 0:
-            rules["profiles"][profile_key]["cost_benchmarks"]["C2"]["material_total_clp"] = c2_data["mat_total"]
-            rules["profiles"][profile_key]["cost_benchmarks"]["C2"]["consumables_total_clp"] = c2_data["cons_total"]
-            rules["profiles"][profile_key]["cost_benchmarks"]["C2"]["calibrated"] = True
-            rules["profiles"][profile_key]["cost_benchmarks"]["C2"]["calibration_date"] = str(date.today())
+        # ── Update benchmarks in rules ──────────────────────────────────────────
+        for comp, data in [("C2", c2_data), ("C3", c3_data)]:
+            if data and data.get("mat_total", 0) > 0:
+                rules["profiles"][profile_key]["cost_benchmarks"][comp]["material_total_clp"]    = data["mat_total"]
+                rules["profiles"][profile_key]["cost_benchmarks"][comp]["consumables_total_clp"] = data["cons_total"]
+                rules["profiles"][profile_key]["cost_benchmarks"][comp]["calibrated"]            = True
+                rules["profiles"][profile_key]["cost_benchmarks"][comp]["calibration_date"]      = str(date.today())
 
-        if c3_data and c3_data["mat_total"] > 0:
-            rules["profiles"][profile_key]["cost_benchmarks"]["C3"]["material_total_clp"] = c3_data["mat_total"]
-            rules["profiles"][profile_key]["cost_benchmarks"]["C3"]["consumables_total_clp"] = c3_data["cons_total"]
-            rules["profiles"][profile_key]["cost_benchmarks"]["C3"]["calibrated"] = True
-            rules["profiles"][profile_key]["cost_benchmarks"]["C3"]["calibration_date"] = str(date.today())
-
-        # Compute and save ratios
-        if c2_data and c3_data and c2_data["mat_total"] > 0 and c2_data["cons_total"] > 0:
+        if c2_data and c3_data and c2_data.get("mat_total", 0) > 0 and c2_data.get("cons_total", 0) > 0:
             rules["profiles"][profile_key]["expected_cost_ratios"]["C2_to_C3"] = {
                 "material":    round(c3_data["mat_total"] / c2_data["mat_total"], 3),
                 "consumables": round(c3_data["cons_total"] / c2_data["cons_total"], 3),
                 "notes":       notes or f"Calibrado {date.today()} por {calibrator}",
             }
 
-        rules["meta"]["last_updated"] = str(date.today())
-        rules["meta"]["calibrated_by"] = calibrator
+        rules["meta"]["last_updated"]   = str(date.today())
+        rules["meta"]["calibrated_by"]  = calibrator
         save_rules(rules)
 
-        # Generate knowledge chunk
-        chunk_id = f"cal-{profile_key}-c2c3-{str(date.today()).replace('-','')}"
-        mat_ratio_str = ""
-        cons_ratio_str = ""
-        if c2_data and c3_data and c2_data["mat_total"] > 0:
+        # ── Build ratios for chunk text ─────────────────────────────────────────
+        mat_ratio_str = cons_ratio_str = ""
+        if c2_data and c3_data and c2_data.get("mat_total", 0) > 0:
             mr = c3_data["mat_total"] / c2_data["mat_total"]
-            cr = c3_data["cons_total"] / c2_data["cons_total"] if c2_data["cons_total"] > 0 else 0
+            cr = c3_data["cons_total"] / c2_data["cons_total"] if c2_data.get("cons_total", 0) > 0 else 0
             mat_ratio_str  = f"×{mr:.2f}"
             cons_ratio_str = f"×{cr:.2f}"
+
+        # ── Determine which drivers are relevant to this profile ────────────────
+        p_rules       = rules.get("profiles", {}).get(profile_key, {})
+        primary_d     = p_rules.get("primary_drivers", [])
+        secondary_d   = p_rules.get("secondary_drivers", [])
+        all_d         = primary_d + secondary_d
+        drivers_cited = list(dict.fromkeys(all_d))  # preserve order, deduplicate
+
+        # ── Build enriched chunk (Lean-inspired: verified claim with context) ───
+        chunk_id = f"cal-{profile_key}-c2c3-{str(date.today()).replace('-','')}"
+        semantic_version = f"v{date.today().strftime('%Y-%m')}"
 
         chunk = {
             "chunk_id": chunk_id,
             "texto": (
-                f"Calibración {profile_key} C2→C3 ({date.today()}). "
+                f"Calibración {profile_key} C2→C3 ({date.today()}, expert: {calibrator}). "
                 f"Ancla C2: {c2_name} — material {fmt_clp(c2_data['mat_total'] if c2_data else 0)}, "
                 f"consumibles {fmt_clp(c2_data['cons_total'] if c2_data else 0)}. "
-                f"Producto C3: {c3_name} — material {fmt_clp(c3_data['mat_total'] if c3_data else 0)}, "
+                f"Ancla C3: {c3_name} — material {fmt_clp(c3_data['mat_total'] if c3_data else 0)}, "
                 f"consumibles {fmt_clp(c3_data['cons_total'] if c3_data else 0)}. "
-                f"Ratio material: {mat_ratio_str}. Ratio consumibles: {cons_ratio_str}. "
-                f"{notes}"
+                f"Ratio material C2→C3: {mat_ratio_str}. Ratio consumibles: {cons_ratio_str}. "
+                f"Drivers activos: {', '.join(drivers_cited)}. {notes}"
             ),
             "texto_embedding": (
-                f"Calibración costos {profile_key} C2 C3 ratio material consumibles "
-                f"{c2_name} {c3_name} {mat_ratio_str} {cons_ratio_str} {notes}"
+                f"calibración costos {profile_key} C2 C3 ratio material consumibles "
+                f"{c2_name} {c3_name} {mat_ratio_str} {cons_ratio_str} "
+                f"drivers {' '.join(drivers_cited)} {notes}"
             ),
             "metadata": {
-                "proceso": "calibracion",
-                "perfil_proceso": profile_key,
-                "driver": "G,D,X",
-                "escalamiento": f"material {mat_ratio_str}, consumibles {cons_ratio_str}",
-                "confianza": 0.9,
-                "activo": True,
-                "supersede": None,
-                "validado_en": str(date.today()),
-                "calibrado_por": calibrator,
-                "source": "calibration_tool",
+                # ── Lean Layer 1 (physical) ─────────────────────────────────────
+                "layer":            "physical",
+                "semantic_version": semantic_version,
+                "expert_id":        calibrator,
+                "verified":         True,
+                "valid_from":       str(date.today()),
+                "valid_until":      None,
+                "superseded_by":    None,
+                "drivers_cited":    drivers_cited,
+                # ── Domain metadata ─────────────────────────────────────────────
+                "proceso":          "calibracion",
+                "perfil_proceso":   profile_key,
+                "nivel_complejidad": "C2→C3",
+                "tipo_impacto":     "costos_directos",
+                "escalamiento":     f"material {mat_ratio_str}, consumibles {cons_ratio_str}",
+                "confianza":        "medido",
+                "fuente":           "calibration_tool",
+                "fuente_id":        chunk_id,
+                "fecha_sesion":     str(date.today()),
+                "ref_producto":     f"{c2_name},{c3_name}",
+                "etiquetas":        [profile_key, "calibracion", "C2_C3_ratio"] + drivers_cited,
+                # ── Legacy fields (for audit_model.py compatibility) ────────────
+                "activo":           True,
+                "validado_en":      str(date.today()),
+                "calibrado_por":    calibrator,
+                "source":           "calibration_tool",
             }
         }
 
-        chunk_line = json.dumps(chunk, ensure_ascii=False)
-        st.markdown('<div class="sec-label" style="margin-top:1rem;">CHUNK GENERADO</div>', unsafe_allow_html=True)
-        st.code(chunk_line, language="json")
-        st.download_button(
-            "⬇️ Descargar chunk (agregar manualmente a knowledge-chunks.jsonl)",
-            data=chunk_line + "\n",
-            file_name=f"{chunk_id}.jsonl",
-            mime="application/json",
-        )
+        # ── Write directly to knowledge-chunks.jsonl ────────────────────────────
+        _write_chunk(chunk)
+        st.cache_data.clear()
+
         st.success(
-            "✅ PROCESS_RULES.json actualizado.\n\n"
-            "Próximo paso: agrega el chunk a `files-process/process-measurements/knowledge-chunks.jsonl` "
-            "y ejecuta `python3 scripts/audit_model.py` para ver el ICM actualizado."
+            f"✅ PROCESS_RULES.json actualizado y chunk `{chunk_id}` escrito en "
+            f"`knowledge-chunks.jsonl`.\n\n"
+            f"ICM actualizado — ve a la pestaña **🔬 ICM** para ver el impacto."
         )
+        with st.expander("Ver chunk generado", expanded=False):
+            st.code(json.dumps(chunk, indent=2, ensure_ascii=False), language="json")
 
 # ─── Tab 1 (new): Dynamic BOM per anchor per complexity level ────────────────
 
@@ -2089,7 +2327,8 @@ def main():
     col_prof, col_info = st.columns([2, 3])
     with col_prof:
         profile_key = st.selectbox("Perfil proceso", available_profiles,
-                                   index=available_profiles.index("p-basurero-cil") if "p-basurero-cil" in available_profiles else 0)
+                                   index=available_profiles.index("p-basurero-cil") if "p-basurero-cil" in available_profiles else 0,
+                                   key="cal_profile_key")
     profile_rules = rules["profiles"][profile_key]
     with col_info:
         primary = ", ".join(profile_rules.get("primary_drivers", []))
@@ -2104,7 +2343,7 @@ def main():
             unsafe_allow_html=True
         )
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📦 Ingreso de Costos",
         "🎯 Sistema de Puntos",
         "📊 Análisis C2 → C3",
@@ -2112,6 +2351,7 @@ def main():
         "🔧 Templates",
         "🔮 Extrapolación",
         "💾 Guardar Hallazgos",
+        "🔬 ICM",
     ])
 
     # Default dims from PROCESS_RULES benchmarks
@@ -2164,6 +2404,9 @@ def main():
 
     with tab7:
         render_save_findings(products, rules, profile_key)
+
+    with tab8:
+        render_icm(rules, profile_key)
 
 
 main()

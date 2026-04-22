@@ -14,13 +14,14 @@ Run:  streamlit run scripts/review.py  (loaded as a Streamlit page)
 """
 
 import json
+import sys
 import streamlit as st
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
 
-ROOT       = Path(__file__).resolve().parent.parent.parent
-RULES_PATH = ROOT / "files-process" / "PROCESS_RULES.json"
+ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
 
@@ -231,16 +232,7 @@ CONSUMABLES_DEFAULT = {
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=30)
-def load_rules() -> dict:
-    try:
-        return json.loads(RULES_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-def save_rules(rules: dict):
-    RULES_PATH.write_text(json.dumps(rules, indent=2, ensure_ascii=False))
-    st.cache_data.clear()
+from db import load_rules, save_rules
 
 def get_hh_rates(rules: dict) -> dict:
     return rules.get("hh_rates", HH_RATES_DEFAULT)

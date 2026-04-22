@@ -17,15 +17,15 @@ import re
 import json
 import requests
 import streamlit as st
-import sqlite3
+import sys
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime
 
-ROOT       = Path(__file__).resolve().parent.parent
-DB         = ROOT / "dataset" / "products.db"
-RULES_PATH = ROOT / "files-process" / "PROCESS_RULES.json"
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+from db import load_rules, save_rules, get_sb, load_all_products, save_bom as _db_save_bom, log_change
 
 # Fallback list — used if PROCESS_RULES.json is unavailable, and as module-level
 # default so PERFILES is always defined before main() updates it dynamically.
@@ -43,17 +43,6 @@ KNOWN_PROCESSES = [
 ]
 
 # ─── PROCESS_RULES.json helpers ──────────────────────────────────────────────
-
-@st.cache_data(ttl=30, show_spinner=False)
-def load_rules() -> dict:
-    try:
-        return json.loads(RULES_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-def save_rules(rules: dict):
-    RULES_PATH.write_text(json.dumps(rules, indent=2, ensure_ascii=False))
-    st.cache_data.clear()
 
 def get_perfiles(rules: dict, df=None) -> list[str]:
     """
@@ -281,39 +270,20 @@ def get_profile_context(perfil: str, rules: dict) -> dict:
 
 # ─── DB helpers ───────────────────────────────────────────────────────────────
 
-def get_conn():
-    conn = sqlite3.connect(DB, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
-
 @st.cache_data(ttl=5)
 def load_products():
-    conn = get_conn()
-    df = pd.read_sql("""
-        SELECT id, handle, perfil_proceso, complejidad, k_num,
-               familia, subfamilia, descripcion_web, url,
-               dim_l_mm, dim_w_mm, dim_h_mm, dim_diameter_mm, dim_espesor_mm,
-               dim_confidence, G, D, validated, validated_by, validated_at,
-               image_url, bom_materials, bom_consumables
-        FROM products
-        WHERE perfil_proceso != 'p-importado'
-        ORDER BY perfil_proceso, complejidad, handle
-    """, conn)
-    conn.close()
-    return df
+    rows = load_all_products()
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    if "perfil_proceso" in df.columns:
+        df = df[df["perfil_proceso"] != "p-importado"].reset_index(drop=True)
+    return df.sort_values(["perfil_proceso","complejidad","handle"]).reset_index(drop=True)
 
 
 def save_bom(handle: str, mat_rows: list, cons_rows: list):
-    conn = get_conn()
-    conn.execute(
-        "UPDATE products SET bom_materials=?, bom_consumables=? WHERE handle=?",
-        (json.dumps(mat_rows, ensure_ascii=False),
-         json.dumps(cons_rows, ensure_ascii=False),
-         handle)
-    )
-    conn.commit()
-    conn.close()
-    st.cache_data.clear()
+    _db_save_bom(handle, mat_rows, cons_rows)
+    load_products.clear()
 
 
 def product_bom_expander(row: dict, key_prefix: str = "bom"):
@@ -380,53 +350,33 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
 
 @st.cache_data(ttl=5)
 def load_history(handle):
-    conn = get_conn()
-    df = pd.read_sql("""
-        SELECT old_perfil, new_perfil, old_complejidad, new_complejidad,
-               reason, changed_by, changed_at
-        FROM categorization_history
-        WHERE handle = ?
-        ORDER BY changed_at DESC
-    """, conn, params=(handle,))
-    conn.close()
-    return df
+    r = get_sb().table("categorization_history").select(
+        "old_perfil,new_perfil,old_complejidad,new_complejidad,reason,changed_by,changed_at"
+    ).eq("handle", handle).order("changed_at", desc=True).execute()
+    return pd.DataFrame(r.data or [])
+
 
 def save_reclassification(handle, old_perfil, new_perfil,
                            old_comp, new_comp, reason, reviewer):
-    conn = get_conn()
     now = datetime.now().isoformat()
+    get_sb().table("products").update({
+        "perfil_proceso": new_perfil,
+        "complejidad":    new_comp,
+        "k_num":          {"C1":1,"C2":2,"C3":3}.get(new_comp),
+        "validated":      1,
+        "validated_by":   reviewer,
+        "validated_at":   now,
+    }).eq("handle", handle).execute()
+    log_change(handle, old_perfil, new_perfil, old_comp, new_comp, reason, reviewer)
+    load_products.clear()
 
-    conn.execute("""
-        UPDATE products
-        SET perfil_proceso = ?, complejidad = ?,
-            k_num = ?,
-            validated = 1, validated_by = ?, validated_at = ?
-        WHERE handle = ?
-    """, (new_perfil, new_comp,
-          {"C1":1,"C2":2,"C3":3}.get(new_comp),
-          reviewer, now, handle))
-
-    conn.execute("""
-        INSERT INTO categorization_history
-          (handle, old_perfil, new_perfil, old_complejidad, new_complejidad,
-           reason, changed_by, changed_at)
-        VALUES (?,?,?,?,?,?,?,?)
-    """, (handle, old_perfil, new_perfil, old_comp, new_comp, reason, reviewer, now))
-
-    conn.commit()
-    conn.close()
-    st.cache_data.clear()
 
 def mark_validated(handle, reviewer):
-    conn = get_conn()
     now = datetime.now().isoformat()
-    conn.execute("""
-        UPDATE products SET validated=1, validated_by=?, validated_at=?
-        WHERE handle=?
-    """, (reviewer, now, handle))
-    conn.commit()
-    conn.close()
-    st.cache_data.clear()
+    get_sb().table("products").update({
+        "validated": 1, "validated_by": reviewer, "validated_at": now,
+    }).eq("handle", handle).execute()
+    load_products.clear()
 
 # ─── Product image fetcher ───────────────────────────────────────────────────
 
@@ -476,12 +426,8 @@ def get_product_image(row: dict) -> str | None:
     if img:
         # Persist to DB so next load from DB will have it
         try:
-            conn = get_conn()
-            conn.execute("UPDATE products SET image_url = ? WHERE handle = ?",
-                         (img, row.get("handle", "")))
-            conn.commit()
-            conn.close()
-            st.cache_data.clear()  # invalidate load_products cache
+            get_sb().table("products").update({"image_url": img}).eq("handle", row.get("handle","")).execute()
+            st.cache_data.clear()
         except Exception:
             pass
     return img
@@ -977,9 +923,9 @@ def page_candidates(df, candidates, reviewer_key):
 
     col1, col2 = st.columns(2)
     with col1:
-        show_validated = st.checkbox("Mostrar ya validados", value=False)
+        show_validated = st.checkbox("Mostrar ya validados", value=False, key="candidatos_show_validated")
     with col2:
-        filter_perfil = st.selectbox("Filtrar por perfil", ["Todos"] + PERFILES)
+        filter_perfil = st.selectbox("Filtrar por perfil", ["Todos"] + PERFILES, key="candidatos_filter_perfil")
 
     if not show_validated:
         candidates = [c for c in candidates if not c["validated"]]
@@ -1010,9 +956,9 @@ def page_por_perfil(df, reviewer_key):
 
     col1, col2 = st.columns(2)
     with col1:
-        perfil = st.selectbox("Perfil proceso", PERFILES)
+        perfil = st.selectbox("Perfil proceso", PERFILES, key="por_perfil_perfil")
     with col2:
-        comp = st.selectbox("Complejidad", COMPLEJIDADES)
+        comp = st.selectbox("Complejidad", COMPLEJIDADES, key="por_perfil_comp")
 
     bucket = df[(df["perfil_proceso"] == perfil) & (df["complejidad"] == comp)]
 
@@ -1047,7 +993,7 @@ def page_por_perfil(df, reviewer_key):
 def page_buscar(df, reviewer_key):
     st.markdown('<h2>🔎 Buscar Producto</h2>', unsafe_allow_html=True)
 
-    query = st.text_input("Buscar por handle o descripción", placeholder="ej: meson-abierto")
+    query = st.text_input("Buscar por handle o descripción", placeholder="ej: meson-abierto", key="buscar_query")
 
     if query:
         mask = (
@@ -1131,15 +1077,10 @@ def page_dashboard(df):
     st.dataframe(pivot, use_container_width=True)
 
     st.markdown('<div class="dulox-section-label" style="margin:1.5rem 0 0.5rem 0;">ÚLTIMAS RECLASIFICACIONES</div>', unsafe_allow_html=True)
-    conn = get_conn()
-    hist = pd.read_sql("""
-        SELECT handle, old_perfil, old_complejidad, new_perfil, new_complejidad,
-               reason, changed_by, changed_at
-        FROM categorization_history
-        ORDER BY changed_at DESC
-        LIMIT 20
-    """, conn)
-    conn.close()
+    r = get_sb().table("categorization_history").select(
+        "handle,old_perfil,old_complejidad,new_perfil,new_complejidad,reason,changed_by,changed_at"
+    ).order("changed_at", desc=True).limit(20).execute()
+    hist = pd.DataFrame(r.data or [])
 
     if hist.empty:
         st.info("Ninguna reclasificación aún — empieza revisando los candidatos.")
@@ -1180,14 +1121,16 @@ def page_nuevo_perfil(rules: dict):
         c_driver = st.text_input(
             "Campo C en DB (opcional)",
             placeholder="ej: num_cajones, num_quemadores — dejar vacío si C no aplica",
-            help="Nombre del campo numérico en products.db que representa el conteo de componentes."
+            help="Nombre del campo numérico en products.db que representa el conteo de componentes.",
+            key="nuevo_perfil_c_driver",
         )
 
         st.markdown("#### Procesos activos")
         processes = st.multiselect(
             "Procesos que aplican a este perfil",
             KNOWN_PROCESSES,
-            default=["armado_trazado", "soldadura", "pulido"]
+            default=["armado_trazado", "soldadura", "pulido"],
+            key="nuevo_perfil_processes",
         )
 
         st.markdown("#### Umbrales de complejidad")
@@ -1568,7 +1511,7 @@ def main():
         st.markdown("### 👤 Identificación")
         reviewer = st.text_input(
             "Tu nombre", value=st.session_state.get("reviewer", ""),
-            placeholder="ej: Fabio"
+            placeholder="ej: Fabio", key="reviewer_name",
         )
         st.session_state["reviewer"] = reviewer
         if reviewer:
@@ -1580,7 +1523,7 @@ def main():
 
         st.divider()
         st.markdown("### 🗂️ Navegación")
-        page = st.radio("", [
+        page = st.radio("", key="nav_page", options=[
             "🔍 Revisar Candidatos",
             "📋 Por Perfil",
             "🔎 Buscar Producto",

@@ -14,7 +14,7 @@ import json
 import base64
 import os
 import re
-import sqlite3
+import sys
 import numpy as np
 from pathlib import Path
 from datetime import datetime
@@ -24,19 +24,10 @@ from PIL import Image, ImageDraw, ImageFont
 import anthropic
 
 ROOT       = Path(__file__).resolve().parent.parent.parent
-DB         = ROOT / "dataset" / "products.db"
-RULES_FILE = ROOT / "files-process" / "PROCESS_RULES.json"
+sys.path.insert(0, str(ROOT / "scripts"))
+from db import load_rules, save_rules, get_sb, search_products, get_product, save_bom as _db_save_bom, handle_exists, log_change
 
 MODEL = "claude-opus-4-5"
-
-# ─── Load PROCESS_RULES.json ──────────────────────────────────────────────────
-
-@st.cache_data
-def load_rules() -> dict:
-    try:
-        return json.loads(RULES_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
 
 # ─── Driver computation (deterministic, from PROCESS_RULES.json) ─────────────
 
@@ -209,8 +200,74 @@ Rules for suggested_perfil:
 Preserve Spanish component names as they appear in the drawing.
 Always populate bom_materials with at least the main body/sheet even if other data is sparse."""
 
-def call_claude_vision(image_bytes: bytes, filename: str, rules: dict) -> dict | None:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+def _load_rag_context(rules: dict, perfil_hint: str | None = None) -> str:
+    """
+    Build a RAG context block from verified knowledge chunks + anchor BOMs.
+    Injected into the Vision system prompt so Claude can classify with real factory data.
+    """
+    lines = []
+
+    # ── Verified knowledge chunks ──────────────────────────────────────────────
+    chunks_path = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
+    if chunks_path.exists():
+        raw = [json.loads(l) for l in chunks_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        # verified = measured or explicitly flagged
+        verified = [c for c in raw if
+                    c.get("metadata", {}).get("verified", False) or
+                    c.get("metadata", {}).get("confianza") == "medido"]
+        # prefer chunks for the hinted perfil
+        if perfil_hint:
+            relevant = [c for c in verified if c.get("metadata", {}).get("perfil_proceso") == perfil_hint]
+            relevant = relevant or verified[:6]
+        else:
+            relevant = verified[:8]
+        if relevant:
+            lines.append("## Conocimiento calibrado de fábrica (mediciones reales):")
+            for c in relevant[:6]:
+                meta = c.get("metadata", {})
+                perfil = meta.get("perfil_proceso", "?")
+                nivel  = meta.get("nivel_complejidad", "?")
+                proc   = meta.get("proceso", "?")
+                lines.append(f"- [{perfil} / {nivel} / {proc}]: {c['texto'][:220]}")
+
+    # ── Anchor product BOMs (real factory measurements) ────────────────────────
+    try:
+        sb = get_sb()
+        q = sb.table("products").select(
+            "handle,perfil_proceso,complejidad,descripcion_web,bom_materials,dim_l_mm,dim_w_mm,dim_espesor_mm"
+        ).eq("is_anchor", 1).neq("bom_materials", "[]").order("perfil_proceso").order("complejidad").limit(6)
+        if perfil_hint:
+            q = q.eq("perfil_proceso", perfil_hint)
+        anchor_rows = q.execute().data or []
+        if anchor_rows:
+            lines.append("\n## BOMs reales de productos ancla (referencia de materiales):")
+            for row in anchor_rows:
+                bom = json.loads(row["bom_materials"] or "[]")
+                mat_items = "; ".join(
+                    f"{r.get('Material','?')} {r.get('kg_ml',0):.2f}u @${r.get('precio_kg',0)}"
+                    for r in bom[:4]
+                )
+                dims = f"L={row['dim_l_mm'] or '?'} W={row['dim_w_mm'] or '?'} e={row['dim_espesor_mm'] or '?'}mm"
+                lines.append(
+                    f"- {row['handle']} ({row['perfil_proceso']} {row['complejidad']}, {dims}): {mat_items}"
+                )
+    except Exception:
+        pass
+
+    if not lines:
+        return ""
+    return (
+        "\n\n## KNOWLEDGE BASE — datos calibrados de la fábrica Dulox\n"
+        "Usa esta información para mejorar la clasificación y el BOM estimado:\n"
+        + "\n".join(lines)
+    )
+
+
+def call_claude_vision(image_bytes: bytes, filename: str, rules: dict, rag_context: str = "") -> dict | None:
+    try:
+        api_key = st.secrets.get("ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    except Exception:
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         st.error("**ANTHROPIC_API_KEY no configurado.** Configura la variable de entorno antes de iniciar Streamlit.")
         return None
@@ -222,12 +279,14 @@ def call_claude_vision(image_bytes: bytes, filename: str, rules: dict) -> dict |
 
     client = anthropic.Anthropic(api_key=api_key)
 
+    system_prompt = EXTRACTION_SYSTEM + (rag_context if rag_context else "")
+
     try:
         with st.spinner("Analizando plano con Claude Vision…"):
             response = client.messages.create(
                 model=MODEL,
                 max_tokens=4096,
-                system=EXTRACTION_SYSTEM,
+                system=system_prompt,
                 messages=[{
                     "role": "user",
                     "content": [
@@ -256,126 +315,62 @@ def call_claude_vision(image_bytes: bytes, filename: str, rules: dict) -> dict |
         st.error(f"Claude devolvió JSON inválido: {e}\n\nRespuesta:\n```\n{raw[:500]}\n```")
         return None
 
-# ─── DB helpers ───────────────────────────────────────────────────────────────
-
-def get_conn():
-    conn = sqlite3.connect(DB, timeout=30, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.row_factory = sqlite3.Row
-    return conn
-
 import pandas as pd
 
-def search_products(query: str) -> list[dict]:
-    conn = get_conn()
-    rows = conn.execute("""
-        SELECT handle, descripcion_web, perfil_proceso, complejidad,
-               G, D, dim_l_mm, dim_w_mm, dim_h_mm, dim_espesor_mm,
-               image_url, bom_materials, bom_consumables
-        FROM products
-        WHERE handle LIKE ? OR descripcion_web LIKE ?
-        ORDER BY perfil_proceso, handle
-        LIMIT 50
-    """, (f"%{query}%", f"%{query}%")).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-def get_product(handle: str) -> dict | None:
-    conn = get_conn()
-    row = conn.execute("""
-        SELECT handle, descripcion_web, perfil_proceso, complejidad,
-               G, D, dim_l_mm, dim_w_mm, dim_h_mm, dim_espesor_mm,
-               image_url, bom_materials, bom_consumables
-        FROM products WHERE handle = ?
-    """, (handle,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-def save_rules(rules: dict):
-    """Persist updated PROCESS_RULES.json and clear cache."""
-    RULES_FILE.write_text(json.dumps(rules, indent=2, ensure_ascii=False))
-    st.cache_data.clear()
-
+# ─── DB helpers (thin wrappers using db.py) ───────────────────────────────────
 
 def save_bom_db(handle: str, mat_rows: list, cons_rows: list):
-    import json as _json
-    conn = get_conn()
-    conn.execute(
-        "UPDATE products SET bom_materials=?, bom_consumables=? WHERE handle=?",
-        (_json.dumps(mat_rows, ensure_ascii=False),
-         _json.dumps(cons_rows, ensure_ascii=False),
-         handle)
-    )
-    conn.commit()
-    conn.close()
-    st.cache_data.clear()
+    _db_save_bom(handle, mat_rows, cons_rows)
 
-# ─── DB operations ────────────────────────────────────────────────────────────
-
-def handle_exists(handle: str) -> bool:
-    conn = sqlite3.connect(DB)
-    exists = conn.execute("SELECT id FROM products WHERE handle=?", (handle,)).fetchone() is not None
-    conn.close()
-    return exists
 
 def save_to_db(product: dict, razon: str, source_file: str, force_update: bool = False) -> tuple[bool, str]:
-    conn = sqlite3.connect(DB)
-    conn.execute("PRAGMA journal_mode=WAL")
-    now = datetime.now().isoformat()
     handle = product["handle"]
+    existing = get_product(handle)
+
+    if existing and not force_update:
+        return False, f"Handle `{handle}` ya existe. Activa 'Forzar actualización'."
+
+    now = datetime.now().isoformat()
+    row = {
+        "handle":          handle,
+        "perfil_proceso":  product["perfil_proceso"],
+        "complejidad":     product["complejidad"],
+        "k_num":           {"C1":1,"C2":2,"C3":3}.get(product["complejidad"]),
+        "familia":         product.get("familia",""),
+        "subfamilia":      product.get("subfamilia",""),
+        "descripcion_web": product.get("descripcion",""),
+        "url":             product.get("url",""),
+        "dim_l_mm":        product.get("dim_l_mm"),
+        "dim_w_mm":        product.get("dim_w_mm"),
+        "dim_h_mm":        product.get("dim_h_mm"),
+        "dim_diameter_mm": product.get("dim_diameter_mm"),
+        "dim_espesor_mm":  product.get("dim_espesor_mm"),
+        "dim_confidence":  product.get("dim_confidence","high"),
+        "dim_notes":       product.get("dim_notes",""),
+        "g_score":         product.get("G"),
+        "d_score":         product.get("D"),
+        "validated":       1,
+        "validated_by":    "drawing-intake",
+        "validated_at":    now,
+        "imported_at":     now,
+    }
+    row = {k: v for k, v in row.items() if v is not None}
 
     try:
-        exists = conn.execute("SELECT perfil_proceso, complejidad FROM products WHERE handle=?", (handle,)).fetchone()
-
-        if exists and not force_update:
-            conn.close()
-            return False, f"Handle `{handle}` ya existe. Activa 'Forzar actualización'."
-
-        cols = ["handle","perfil_proceso","complejidad","k_num","familia","subfamilia",
-                "descripcion_web","url","dim_l_mm","dim_w_mm","dim_h_mm","dim_diameter_mm",
-                "dim_espesor_mm","dim_confidence","dim_notes","G","D",
-                "validated","validated_by","validated_at","imported_at"]
-
-        vals = [
-            handle, product["perfil_proceso"], product["complejidad"],
-            {"C1":1,"C2":2,"C3":3}.get(product["complejidad"]),
-            product.get("familia",""), product.get("subfamilia",""),
-            product.get("descripcion",""), product.get("url",""),
-            product.get("dim_l_mm"), product.get("dim_w_mm"), product.get("dim_h_mm"),
-            product.get("dim_diameter_mm"), product.get("dim_espesor_mm"),
-            product.get("dim_confidence","high"), product.get("dim_notes",""),
-            product.get("G"), product.get("D"),
-            1, "drawing-intake", now, now,
-        ]
-
-        if exists:
-            set_clause = ", ".join(f"{c}=?" for c in cols[1:])
-            conn.execute(f"UPDATE products SET {set_clause} WHERE handle=?", vals[1:] + [handle])
-            action = "updated"
-        else:
-            placeholders = ", ".join("?" * len(cols))
-            conn.execute(f"INSERT INTO products ({', '.join(cols)}) VALUES ({placeholders})", vals)
-            action = "inserted"
-
-        conn.execute("""
-            INSERT INTO categorization_history
-              (handle, old_perfil, new_perfil, old_complejidad, new_complejidad,
-               reason, changed_by, changed_at)
-            VALUES (?,?,?,?,?,?,?,?)
-        """, (
+        get_sb().table("products").upsert(row, on_conflict="handle").execute()
+        action = "actualizado" if existing else "creado"
+        log_change(
             handle,
-            exists[0] if exists else None, product["perfil_proceso"],
-            exists[1] if exists else None, product["complejidad"],
+            existing.get("perfil_proceso") if existing else None,
+            product["perfil_proceso"],
+            existing.get("complejidad") if existing else None,
+            product["complejidad"],
             f"[drawing-intake] {razon} | source: {source_file}",
-            "drawing-intake", now,
-        ))
-
-        conn.commit()
-        conn.close()
-        return True, f"✅ Producto `{handle}` {action} en products.db"
-
+            "drawing-intake",
+        )
+        load_rules.clear()
+        return True, f"✅ Producto `{handle}` {action}."
     except Exception as e:
-        conn.close()
         return False, f"Error DB: {e}"
 
 # ─── Image overlay ────────────────────────────────────────────────────────────
@@ -585,7 +580,8 @@ def _upload_and_extract(rules: dict, tab_key: str) -> tuple[bytes | None, str, d
             st.info("Imagen cargada. Analiza con Claude Vision para extraer dimensiones, o continúa manualmente.")
             if st.button("🔍 Analizar con Claude Vision", type="primary",
                          use_container_width=True, key=f"analyze_{tab_key}"):
-                result = call_claude_vision(image_bytes, filename, rules)
+                rag_ctx = _load_rag_context(rules)
+                result = call_claude_vision(image_bytes, filename, rules, rag_context=rag_ctx)
                 if result:
                     st.session_state[cache_key] = result
                     st.rerun()
@@ -952,10 +948,9 @@ def main():
                 ok, msg = save_to_db(product, f"Ingreso desde plano {filename}", filename, force_update=True)
                 if ok:
                     save_bom_db(handle, mat_rows, cons_rows)
-                    conn = get_conn()
-                    conn.execute("UPDATE products SET c_value=?, x_flags=? WHERE handle=?",
-                                 (c_val, json.dumps(x_active), handle))
-                    conn.commit(); conn.close()
+                    get_sb().table("products").update({
+                        "c_value": c_val, "x_flags": json.dumps(x_active),
+                    }).eq("handle", handle).execute()
                     st.success(f"{msg} · BOM ${bom_total:,}")
                     st.balloons()
                     st.cache_data.clear()
@@ -1078,10 +1073,9 @@ def main():
                     filename_d or "derivado", force_update=True)
                 if ok_d:
                     save_bom_db(new_handle_d, mat_rows_d, cons_rows_d)
-                    conn = get_conn()
-                    conn.execute("UPDATE products SET c_value=?, x_flags=? WHERE handle=?",
-                                 (c_val_d, json.dumps(x_active_d), new_handle_d))
-                    conn.commit(); conn.close()
+                    get_sb().table("products").update({
+                        "c_value": c_val_d, "x_flags": json.dumps(x_active_d),
+                    }).eq("handle", new_handle_d).execute()
                     st.success(f"{msg_d} · BOM ${bom_total_d:,}")
                     st.balloons()
                     st.cache_data.clear()
