@@ -1544,10 +1544,9 @@ def main():
             st.rerun()
 
         st.divider()
-        db_kb = DB.stat().st_size // 1024
         st.markdown(
-            f'<div class="dulox-section-label">BASE DE DATOS</div>'
-            f'<div style="font-size:0.82rem;color:var(--accent);">products.db · {db_kb} KB</div>',
+            '<div class="dulox-section-label">BASE DE DATOS</div>'
+            '<div style="font-size:0.82rem;color:var(--accent);">Supabase · conectado</div>',
             unsafe_allow_html=True
         )
         st.markdown("")
