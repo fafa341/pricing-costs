@@ -473,12 +473,14 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         st.markdown("**📋 Materiales (BOM)**")
         mat_df = st.data_editor(
             st.session_state[_mat_skey],
+            key=f"bom_mat_editor_{key_prefix}",
             use_container_width=True, num_rows="dynamic",
             column_config=MAT_CFG, hide_index=True,
         )
         st.markdown("**🔩 Consumibles**")
         cons_df = st.data_editor(
             st.session_state[_cons_skey],
+            key=f"bom_cons_editor_{key_prefix}",
             use_container_width=True, num_rows="dynamic",
             column_config=CONS_CFG, hide_index=True,
         )

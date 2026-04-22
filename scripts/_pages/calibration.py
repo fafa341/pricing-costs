@@ -2307,8 +2307,8 @@ def render_bom_entry(rules, profile_key):
             H = row.get("dim_h_mm") or 0
             area = 2*(L+W)*H + L*W if L and W else None
             factor = round(area / anchor_area, 3) if (area and anchor_area) else None
-            mat_est  = round(anchor_mat  * factor) if (anchor_mat  and factor) else None
-            cons_est = round(anchor_cons * factor) if (anchor_cons and factor) else None
+            mat_est  = round(anchor_mat  * factor) if (anchor_mat  and factor and math.isfinite(anchor_mat))  else None
+            cons_est = round(anchor_cons * factor) if (anchor_cons and factor and math.isfinite(anchor_cons)) else None
             total_est = (mat_est or 0) + (cons_est or 0)
 
             extrap_rows.append({
