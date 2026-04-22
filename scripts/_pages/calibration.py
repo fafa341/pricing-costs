@@ -2167,42 +2167,56 @@ def render_bom_entry(rules, profile_key):
                 unsafe_allow_html=True
             )
 
-            # BOM editors
-            mat_df  = bom_editor(
-                "MATERIALES — BOM",
-                saved_mat if saved_mat else [{"Subconjunto":"","Dimensiones":"","Material":"","kg_ml":0.0,"precio_kg":3600,"total":0}],
-                f"mat_{profile_key}_{comp}"
-            )
-            cons_df = bom_editor(
-                "CONSUMIBLES",
-                saved_cons if saved_cons else [{"Producto":"","Proceso":"soldadura","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}],
-                f"cons_{profile_key}_{comp}"
-            )
+            # ── BOM editors wrapped in a form to prevent mid-edit reruns ──────
+            _mat_skey  = f"mat_{profile_key}_{comp}"
+            _cons_skey = f"cons_{profile_key}_{comp}"
+            _mat_hkey  = f"h_{_mat_skey}"
+            _cons_hkey = f"h_{_cons_skey}"
+            _mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","kg_ml":0.0,"precio_kg":3600,"total":0}]
+            _cons_default = saved_cons or [{"Producto":"","Proceso":"soldadura","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
 
-            mat_total  = int(mat_df["total"].fillna(0).sum())  if "total"  in mat_df.columns else 0
-            cons_total = int(cons_df["Total"].fillna(0).sum()) if "Total"  in cons_df.columns else 0
-            total = mat_total + cons_total
+            # Seed state from DB; invalidate when anchor changes
+            _mat_hash = hash(str(_mat_default))
+            _cons_hash = hash(str(_cons_default))
+            if st.session_state.get(_mat_hkey) != _mat_hash or _mat_skey not in st.session_state:
+                st.session_state[_mat_skey]  = pd.DataFrame(_mat_default)
+                st.session_state[_mat_hkey]  = _mat_hash
+            if st.session_state.get(_cons_hkey) != _cons_hash or _cons_skey not in st.session_state:
+                st.session_state[_cons_skey] = pd.DataFrame(_cons_default)
+                st.session_state[_cons_hkey] = _cons_hash
 
-            # Cost summary
-            st.markdown(
-                f'<div style="display:flex;gap:1rem;margin-top:0.5rem;flex-wrap:wrap;">'
-                f'<div class="cal-card" style="flex:1;min-width:110px;text-align:center;">'
-                f'<div class="sec-label">MATERIAL</div>'
-                f'<div class="number-big">{fmt_clp(mat_total)}</div></div>'
-                f'<div class="cal-card" style="flex:1;min-width:110px;text-align:center;">'
-                f'<div class="sec-label">CONSUMIBLES</div>'
-                f'<div class="number-big">{fmt_clp(cons_total)}</div></div>'
-                f'<div class="cal-card" style="flex:1;min-width:110px;text-align:center;">'
-                f'<div class="sec-label">TOTAL DIRECTO</div>'
-                f'<div class="number-big" style="color:#3fb950;">{fmt_clp(total)}</div></div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+            with st.form(f"bom_form_{profile_key}_{comp}"):
+                st.markdown('<div class="sec-label">MATERIALES — BOM</div>', unsafe_allow_html=True)
+                mat_df = st.data_editor(
+                    st.session_state[_mat_skey],
+                    use_container_width=True, num_rows="dynamic", hide_index=True,
+                    column_config={
+                        "total":     st.column_config.NumberColumn("Total $", format="$ %d"),
+                        "precio_kg": st.column_config.NumberColumn("$/kg o $/u", format="$ %d"),
+                        "kg_ml":     st.column_config.NumberColumn("kg o ML o u"),
+                    },
+                )
+                st.markdown('<div class="sec-label" style="margin-top:0.6rem;">CONSUMIBLES</div>', unsafe_allow_html=True)
+                cons_df = st.data_editor(
+                    st.session_state[_cons_skey],
+                    use_container_width=True, num_rows="dynamic", hide_index=True,
+                    column_config={
+                        "Precio_u": st.column_config.NumberColumn("Precio u.", format="$ %d"),
+                        "Total":    st.column_config.NumberColumn("Total $",   format="$ %d"),
+                        "Cantidad": st.column_config.NumberColumn("Cant."),
+                    },
+                )
+                save_clicked = st.form_submit_button(
+                    f"💾 Guardar BOM ({selected_anchor})",
+                    use_container_width=True,
+                )
 
-            # Save BOM
-            if st.button(f"💾 Guardar BOM en DB ({selected_anchor})", key=f"save_bom_{profile_key}_{comp}"):
+            # Process form submission outside the form context
+            if save_clicked:
+                mat_total  = int(mat_df["total"].fillna(0).sum())  if "total"  in mat_df.columns else 0
+                cons_total = int(cons_df["Total"].fillna(0).sum()) if "Total"  in cons_df.columns else 0
+                total      = mat_total + cons_total
                 _save_bom_to_db(selected_anchor, mat_df, cons_df)
-                # Also update cost_benchmarks in PROCESS_RULES.json
                 if "cost_benchmarks" not in rules["profiles"][profile_key]:
                     rules["profiles"][profile_key]["cost_benchmarks"] = {}
                 rules["profiles"][profile_key]["cost_benchmarks"][comp] = {
@@ -2218,8 +2232,31 @@ def render_bom_entry(rules, profile_key):
                 rules["profiles"][profile_key]["anchors"][comp] = selected_anchor
                 rules["meta"]["last_updated"] = str(date.today())
                 save_rules(rules)
+                # Clear state so next render re-seeds from fresh DB data
+                for _k in [_mat_skey, _mat_hkey, _cons_skey, _cons_hkey]:
+                    st.session_state.pop(_k, None)
                 st.success(f"✅ BOM guardado — {selected_anchor} ({comp})")
                 st.rerun()
+            else:
+                # Show last-saved totals (update after next save)
+                mat_total  = int(mat_df["total"].fillna(0).sum())  if "total"  in mat_df.columns else 0
+                cons_total = int(cons_df["Total"].fillna(0).sum()) if "Total"  in cons_df.columns else 0
+                total      = mat_total + cons_total
+
+            st.markdown(
+                f'<div style="display:flex;gap:1rem;margin-top:0.5rem;flex-wrap:wrap;">'
+                f'<div class="cal-card" style="flex:1;min-width:110px;text-align:center;">'
+                f'<div class="sec-label">MATERIAL</div>'
+                f'<div class="number-big">{fmt_clp(mat_total)}</div></div>'
+                f'<div class="cal-card" style="flex:1;min-width:110px;text-align:center;">'
+                f'<div class="sec-label">CONSUMIBLES</div>'
+                f'<div class="number-big">{fmt_clp(cons_total)}</div></div>'
+                f'<div class="cal-card" style="flex:1;min-width:110px;text-align:center;">'
+                f'<div class="sec-label">TOTAL DIRECTO</div>'
+                f'<div class="number-big" style="color:#3fb950;">{fmt_clp(total)}</div></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
 
         # Store for downstream tabs
         all_products[f"{selected_anchor} ({comp})"] = {
