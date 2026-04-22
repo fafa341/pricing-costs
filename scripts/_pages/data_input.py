@@ -328,13 +328,21 @@ def render_drivers_cx(df: pd.DataFrame, profile_key: str, rules: dict):
         unsafe_allow_html=True
     )
 
+    _cx_ekey = f"cx_editor_{profile_key}"
+    _cx_skey = f"df_{_cx_ekey}"
+    _cx_hkey = f"hash_{_cx_ekey}"
+    _cx_hash = hash(str(edit_df.values.tolist()) + str(list(edit_df.columns)))
+    if st.session_state.get(_cx_hkey) != _cx_hash or _cx_skey not in st.session_state:
+        st.session_state[_cx_skey] = edit_df
+        st.session_state[_cx_hkey] = _cx_hash
+
     edited = st.data_editor(
-        edit_df,
+        st.session_state[_cx_skey],
         column_config=col_config,
         use_container_width=True,
         hide_index=True,
         num_rows="fixed",
-        key=f"cx_editor_{profile_key}",
+        key=_cx_ekey,
     )
 
     # ── Live score preview ──

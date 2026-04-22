@@ -297,9 +297,23 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
 
     prefix = f"{key_prefix}_{handle}"
 
+    # Seed session state once; invalidate when source data changes (e.g. after save)
+    _mat_skey  = f"df_bomedit_mat_{prefix}"
+    _mat_hkey  = f"hash_bomedit_mat_{prefix}"
+    _cons_skey = f"df_bomedit_cons_{prefix}"
+    _cons_hkey = f"hash_bomedit_cons_{prefix}"
+    _mat_hash  = hash(str(mat_default))
+    _cons_hash = hash(str(cons_default))
+    if st.session_state.get(_mat_hkey) != _mat_hash or _mat_skey not in st.session_state:
+        st.session_state[_mat_skey] = pd.DataFrame(mat_default)
+        st.session_state[_mat_hkey] = _mat_hash
+    if st.session_state.get(_cons_hkey) != _cons_hash or _cons_skey not in st.session_state:
+        st.session_state[_cons_skey] = pd.DataFrame(cons_default)
+        st.session_state[_cons_hkey] = _cons_hash
+
     st.markdown('<div class="dulox-section-label" style="margin-bottom:0.35rem;">MATERIALES</div>', unsafe_allow_html=True)
     mat_df = st.data_editor(
-        pd.DataFrame(mat_default),
+        st.session_state[_mat_skey],
         key=f"bomedit_mat_{prefix}",
         use_container_width=True,
         num_rows="dynamic",
@@ -313,7 +327,7 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
 
     st.markdown('<div class="dulox-section-label" style="margin:0.5rem 0 0.35rem 0;">CONSUMIBLES</div>', unsafe_allow_html=True)
     cons_df = st.data_editor(
-        pd.DataFrame(cons_default),
+        st.session_state[_cons_skey],
         key=f"bomedit_cons_{prefix}",
         use_container_width=True,
         num_rows="dynamic",

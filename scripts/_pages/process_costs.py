@@ -279,10 +279,16 @@ def render_hh_rates(rules: dict):
     all_procs = sorted(set(list(HH_RATES_DEFAULT.keys()) + list(current.keys())))
 
     rows = [{"Proceso": p, "CLP/hora": current.get(p, HH_RATES_DEFAULT.get(p, 0))} for p in all_procs]
-    df = pd.DataFrame(rows)
+
+    _hh_skey = "df_hh_editor"
+    _hh_hkey = "hash_hh_editor"
+    _hh_hash = hash(str(rows))
+    if st.session_state.get(_hh_hkey) != _hh_hash or _hh_skey not in st.session_state:
+        st.session_state[_hh_skey] = pd.DataFrame(rows)
+        st.session_state[_hh_hkey] = _hh_hash
 
     edited = st.data_editor(
-        df,
+        st.session_state[_hh_skey],
         column_config={
             "Proceso": st.column_config.TextColumn("Proceso", disabled=True, width="medium"),
             "CLP/hora": st.column_config.NumberColumn(
@@ -493,9 +499,17 @@ def render_consumables(rules: dict):
                     for r in default_rows
                 ] if default_rows else [{"Producto": "", "Unidad": "u", "Cantidad": 0, "Precio_u": 0}]
 
+                _cons_ekey = f"cons_{proc}_{lvl}"
+                _cons_skey = f"df_{_cons_ekey}"
+                _cons_hkey = f"hash_{_cons_ekey}"
+                _cons_hash = hash(str(df_rows))
+                if st.session_state.get(_cons_hkey) != _cons_hash or _cons_skey not in st.session_state:
+                    st.session_state[_cons_skey] = pd.DataFrame(df_rows)
+                    st.session_state[_cons_hkey] = _cons_hash
+
                 edited = st.data_editor(
-                    pd.DataFrame(df_rows),
-                    key=f"cons_{proc}_{lvl}",
+                    st.session_state[_cons_skey],
+                    key=_cons_ekey,
                     use_container_width=True,
                     num_rows="dynamic",
                     column_config=COL_CFG,

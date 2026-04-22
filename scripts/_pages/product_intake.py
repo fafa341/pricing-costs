@@ -453,16 +453,30 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
     mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","kg_ml":0.0,"precio_kg":3600}]
     cons_default = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0}]
 
+    # Seed session state once; invalidate when source data changes
+    _mat_skey  = f"df_bom_mat_{key_prefix}"
+    _mat_hkey  = f"hash_bom_mat_{key_prefix}"
+    _cons_skey = f"df_bom_cons_{key_prefix}"
+    _cons_hkey = f"hash_bom_cons_{key_prefix}"
+    _mat_hash  = hash(str(mat_default))
+    _cons_hash = hash(str(cons_default))
+    if st.session_state.get(_mat_hkey) != _mat_hash or _mat_skey not in st.session_state:
+        st.session_state[_mat_skey] = pd.DataFrame(mat_default)
+        st.session_state[_mat_hkey] = _mat_hash
+    if st.session_state.get(_cons_hkey) != _cons_hash or _cons_skey not in st.session_state:
+        st.session_state[_cons_skey] = pd.DataFrame(cons_default)
+        st.session_state[_cons_hkey] = _cons_hash
+
     st.markdown("**📋 Materiales (BOM)**")
     mat_df = st.data_editor(
-        pd.DataFrame(mat_default), key=f"bom_mat_{key_prefix}",
+        st.session_state[_mat_skey], key=f"bom_mat_{key_prefix}",
         use_container_width=True, num_rows="dynamic",
         column_config=MAT_CFG, hide_index=True,
     )
 
     st.markdown("**🔩 Consumibles**")
     cons_df = st.data_editor(
-        pd.DataFrame(cons_default), key=f"bom_cons_{key_prefix}",
+        st.session_state[_cons_skey], key=f"bom_cons_{key_prefix}",
         use_container_width=True, num_rows="dynamic",
         column_config=CONS_CFG, hide_index=True,
     )
