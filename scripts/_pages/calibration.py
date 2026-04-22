@@ -389,15 +389,20 @@ def bom_editor(label, default_rows, key):
         use_container_width=True,
         num_rows="dynamic",
         column_config={
-            "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", step=1),
+            "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", disabled=True),
             "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="$ %.0f", step=1),
             "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f",   step=0.0001),
+            "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f",   step=0.001),
             "Precio_u":  st.column_config.NumberColumn("Precio u.",   format="$ %.0f", step=1),
-            "Total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", step=1),
-            "Cantidad":  st.column_config.NumberColumn("Cant.",        format="%.3f",   step=0.001),
+            "Total":     st.column_config.NumberColumn("Total cons.",  format="$ %.0f", disabled=True),
         },
         hide_index=True,
     )
+    # Compute material total = Cantidad × kg_ml × precio_kg
+    if isinstance(edited, pd.DataFrame) and not edited.empty and "kg_ml" in edited.columns:
+        _qty = edited.get("Cantidad", pd.Series([1.0]*len(edited))).fillna(1.0)
+        edited = edited.copy()
+        edited["total"] = (_qty * edited["kg_ml"].fillna(0) * edited["precio_kg"].fillna(0)).round().astype(int)
     st.session_state[key] = edited
     return edited
 
@@ -2172,7 +2177,7 @@ def render_bom_entry(rules, profile_key):
             _cons_skey = f"cons_{profile_key}_{comp}"
             _mat_hkey  = f"h_{_mat_skey}"
             _cons_hkey = f"h_{_cons_skey}"
-            _mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","kg_ml":0.0,"precio_kg":3600,"total":0}]
+            _mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","Cantidad":1.0,"kg_ml":0.0,"precio_kg":3600,"total":0}]
             _cons_default = saved_cons or [{"Producto":"","Proceso":"soldadura","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
 
             # Seed state from DB; invalidate when anchor changes
@@ -2191,9 +2196,10 @@ def render_bom_entry(rules, profile_key):
                     st.session_state[_mat_skey],
                     use_container_width=True, num_rows="dynamic", hide_index=True,
                     column_config={
-                        "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", step=1),
+                        "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", disabled=True),
                         "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="$ %.0f", step=1),
                         "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f",   step=0.0001),
+                        "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f",   step=0.001),
                     },
                 )
                 st.markdown('<div class="sec-label" style="margin-top:0.6rem;">CONSUMIBLES</div>', unsafe_allow_html=True)
@@ -2202,7 +2208,7 @@ def render_bom_entry(rules, profile_key):
                     use_container_width=True, num_rows="dynamic", hide_index=True,
                     column_config={
                         "Precio_u": st.column_config.NumberColumn("Precio u.", format="$ %.0f", step=1),
-                        "Total":    st.column_config.NumberColumn("Total $",   format="$ %.0f", step=1),
+                        "Total":    st.column_config.NumberColumn("Total cons.", format="$ %.0f", disabled=True),
                         "Cantidad": st.column_config.NumberColumn("Cant.",      format="%.3f",   step=0.001),
                     },
                 )
@@ -2213,8 +2219,16 @@ def render_bom_entry(rules, profile_key):
 
             # Process form submission outside the form context
             if save_clicked:
-                mat_total  = int(mat_df["total"].fillna(0).sum())  if "total"  in mat_df.columns else 0
-                cons_total = int(cons_df["Total"].fillna(0).sum()) if "Total"  in cons_df.columns else 0
+                # Compute totals with Cantidad
+                if isinstance(mat_df, pd.DataFrame) and not mat_df.empty and "kg_ml" in mat_df.columns:
+                    _qty = mat_df.get("Cantidad", pd.Series([1.0]*len(mat_df))).fillna(1.0)
+                    mat_df = mat_df.copy()
+                    mat_df["total"] = (_qty * mat_df["kg_ml"].fillna(0) * mat_df["precio_kg"].fillna(0)).round().astype(int)
+                if isinstance(cons_df, pd.DataFrame) and not cons_df.empty and "Cantidad" in cons_df.columns:
+                    cons_df = cons_df.copy()
+                    cons_df["Total"] = (cons_df["Cantidad"].fillna(0) * cons_df["Precio_u"].fillna(0)).round().astype(int)
+                mat_total  = int(mat_df["total"].fillna(0).sum())  if isinstance(mat_df, pd.DataFrame) and "total"  in mat_df.columns else 0
+                cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total"  in cons_df.columns else 0
                 total      = mat_total + cons_total
                 _save_bom_to_db(selected_anchor, mat_df, cons_df)
                 if "cost_benchmarks" not in rules["profiles"][profile_key]:

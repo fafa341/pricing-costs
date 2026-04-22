@@ -439,6 +439,7 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         "Subconjunto": st.column_config.TextColumn("Subconjunto", width="medium"),
         "Dimensiones": st.column_config.TextColumn("Dimensiones", width="medium"),
         "Material":    st.column_config.TextColumn("Material", width="large"),
+        "Cantidad":    st.column_config.NumberColumn("Cant.",       min_value=0, step=0.001, format="%.3f"),
         "kg_ml":       st.column_config.NumberColumn("kg/ML/u",    min_value=0, step=0.0001, format="%.4f"),
         "precio_kg":   st.column_config.NumberColumn("$/kg o $/u", min_value=0, step=1,      format="$ %.0f"),
     }
@@ -450,7 +451,7 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         "Precio_u":  st.column_config.NumberColumn("Precio u. $", min_value=0, step=1,  format="$ %.0f"),
     }
 
-    mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","kg_ml":0.0,"precio_kg":3600}]
+    mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","Cantidad":1.0,"kg_ml":0.0,"precio_kg":3600}]
     cons_default = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0}]
 
     # Seed session state once; invalidate when source data changes
@@ -497,7 +498,8 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
 
         if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
             _m = mat_df.copy()
-            _m["total"] = (_m["kg_ml"].fillna(0) * _m["precio_kg"].fillna(0)).round().astype(int)
+            _qty = _m.get("Cantidad", pd.Series([1.0] * len(_m))).fillna(1.0)
+            _m["total"] = (_qty * _m["kg_ml"].fillna(0) * _m["precio_kg"].fillna(0)).round().astype(int)
             mat_total = int(_m["total"].sum())
             mat_rows  = _m.to_dict("records")
 

@@ -292,7 +292,7 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
     saved_mat  = json.loads(row.get("bom_materials",  "[]") or "[]")
     saved_cons = json.loads(row.get("bom_consumables","[]") or "[]")
 
-    mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","kg_ml":0.0,"precio_kg":3600,"total":0}]
+    mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","Cantidad":1.0,"kg_ml":0.0,"precio_kg":3600,"total":0}]
     cons_default = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
 
     prefix = f"{key_prefix}_{handle}"
@@ -319,9 +319,10 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", step=1),
+            "total":     st.column_config.NumberColumn("Total $",     format="$ %.0f", disabled=True),
             "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="$ %.0f", step=1),
             "kg_ml":     st.column_config.NumberColumn("kg / ML / u", format="%.4f",   step=0.0001),
+            "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f",   step=0.001),
         }
     )
     st.session_state[_mat_skey] = mat_df  # write back so edits survive rerun
@@ -341,6 +342,12 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
     )
     st.session_state[_cons_skey] = cons_df  # write back so edits survive rerun
 
+    # Compute mat total = Cantidad × kg_ml × precio_kg
+    if isinstance(mat_df, pd.DataFrame) and not mat_df.empty and "kg_ml" in mat_df.columns:
+        _qty = mat_df.get("Cantidad", pd.Series([1.0]*len(mat_df))).fillna(1.0)
+        mat_df = mat_df.copy()
+        mat_df["total"] = (_qty * mat_df["kg_ml"].fillna(0) * mat_df["precio_kg"].fillna(0)).round().astype(int)
+        st.session_state[_mat_skey] = mat_df
     mat_total  = int(mat_df["total"].fillna(0).sum())  if isinstance(mat_df, pd.DataFrame) and "total"  in mat_df.columns else 0
     cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total"  in cons_df.columns else 0
 
@@ -1522,22 +1529,7 @@ def main():
         unsafe_allow_html=True
     )
 
-    # Reviewer identity (persisted in session)
     with st.sidebar:
-        st.markdown("### 👤 Identificación")
-        reviewer = st.text_input(
-            "Tu nombre", value=st.session_state.get("reviewer", ""),
-            placeholder="ej: Fabio", key="reviewer_name",
-        )
-        st.session_state["reviewer"] = reviewer
-        if reviewer:
-            st.markdown(
-                f'<div style="background:var(--green-bg);border:1px solid var(--green-border);'
-                f'border-radius:6px;padding:6px 12px;font-size:0.82rem;color:var(--green);">✅ {reviewer}</div>',
-                unsafe_allow_html=True
-            )
-
-        st.divider()
         st.markdown("### 🗂️ Navegación")
         page = st.radio("", key="nav_page", options=[
             "🔍 Revisar Candidatos",
