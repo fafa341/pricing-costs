@@ -2258,23 +2258,20 @@ def render_bom_entry(rules, profile_key):
                 unsafe_allow_html=True
             )
 
-        # Store for downstream tabs
+        # Store for downstream tabs (use saved DB values for stability)
+        _dn = lambda v: float(v) if v is not None and v == v else 0.0  # safe coerce, NaN → 0
+        _saved_mat_total  = int(sum(_dn(r.get("total"))  for r in (saved_mat  or [])))
+        _saved_cons_total = int(sum(_dn(r.get("Total"))  for r in (saved_cons or [])))
         all_products[f"{selected_anchor} ({comp})"] = {
             "G": G_new, "D": D_new, "area": area, "L": L, "W": W, "H": H, "e": e,
             "c_count": int(anchor_row.get("c_value") or 0),
             "C": compute_C(int(anchor_row.get("c_value") or 0), rules) if anchor_row.get("c_value") else None,
             "x_active": {},
-            "mat_df":   mat_df if isinstance(mat_df, pd.DataFrame) else pd.DataFrame(),
+            "mat_df":   mat_df  if isinstance(mat_df,  pd.DataFrame) else pd.DataFrame(),
             "cons_df":  cons_df if isinstance(cons_df, pd.DataFrame) else pd.DataFrame(),
-            "mat_total":  int(json.loads(saved_mat_json)[0]["total"] if saved_mat else 0)
-                          if False else  # use live values
-                          int(st.session_state.get(f"mat_{profile_key}_{comp}", pd.DataFrame(
-                              json.loads(saved_mat_json) if saved_mat else []
-                          )).get("total", pd.Series([0])).sum() if not isinstance(
-                              st.session_state.get(f"mat_{profile_key}_{comp}"), type(None)) else
-                          sum(r.get("total",0) for r in (saved_mat or []))),
-            "cons_total": sum(r.get("Total",0) for r in (saved_cons or [])),
-            "total": sum(r.get("total",0) for r in (saved_mat or [])) + sum(r.get("Total",0) for r in (saved_cons or [])),
+            "mat_total":  _saved_mat_total,
+            "cons_total": _saved_cons_total,
+            "total":      _saved_mat_total + _saved_cons_total,
             "expected_comp": comp,
         }
 
