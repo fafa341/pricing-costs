@@ -470,6 +470,22 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
 
     _result_skey = f"result_bom_{key_prefix}"
 
+    # Seed result from saved data on first load so totals aren't 0 before submit
+    if _result_skey not in st.session_state:
+        _rm, _rc, _rmt, _rct = mat_default, cons_default, 0, 0
+        if mat_default:
+            _mdf = pd.DataFrame(mat_default)
+            _qty = _mdf["Cantidad"].fillna(1.0) if "Cantidad" in _mdf.columns else pd.Series([1.0] * len(_mdf))
+            _mdf["total"] = (_qty * _mdf["kg_ml"].fillna(0) * _mdf["precio_kg"].fillna(0)).round().astype(int)
+            _rmt = int(_mdf["total"].sum())
+            _rm  = _mdf.to_dict("records")
+        if cons_default:
+            _cdf = pd.DataFrame(cons_default)
+            _cdf["Total"] = (_cdf["Cantidad"].fillna(0) * _cdf["Precio_u"].fillna(0)).round().astype(int)
+            _rct = int(_cdf["Total"].sum())
+            _rc  = _cdf.to_dict("records")
+        st.session_state[_result_skey] = (_rm, _rc, _rmt, _rct)
+
     with st.form(f"bom_form_{key_prefix}"):
         st.markdown("**📋 Materiales (BOM)**")
         mat_df = st.data_editor(
