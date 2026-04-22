@@ -14,6 +14,7 @@ Views:
 """
 
 import re
+import json
 import requests
 import streamlit as st
 import sqlite3
@@ -22,19 +23,53 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 
-ROOT = Path(__file__).resolve().parent.parent
-DB   = ROOT / "dataset" / "products.db"
+ROOT       = Path(__file__).resolve().parent.parent
+DB         = ROOT / "dataset" / "products.db"
+RULES_PATH = ROOT / "files-process" / "PROCESS_RULES.json"
 
-PERFILES = [
+# Fallback list — used if PROCESS_RULES.json is unavailable, and as module-level
+# default so PERFILES is always defined before main() updates it dynamically.
+_PERFILES_FALLBACK = [
     "p-basurero-cil", "p-basurero-rect", "p-campana", "p-carro-bandejero",
     "p-carro-traslado", "p-cilindrico", "p-cocina-gas", "p-custom",
     "p-electrico", "p-laminar-simple", "p-laser", "p-lavadero",
     "p-meson", "p-modulo", "p-rejilla", "p-sumidero", "p-tina",
 ]
+PERFILES = _PERFILES_FALLBACK  # updated dynamically in main() after rules + df load
 COMPLEJIDADES = ["C1", "C2", "C3"]
+KNOWN_PROCESSES = [
+    "laser", "corte_manual", "armado_trazado", "plegado", "cilindrado",
+    "soldadura", "pulido", "qc", "grabado_laser", "refrigeracion", "pintura",
+]
+
+# ─── PROCESS_RULES.json helpers ──────────────────────────────────────────────
+
+@st.cache_data(ttl=30, show_spinner=False)
+def load_rules() -> dict:
+    try:
+        return json.loads(RULES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def save_rules(rules: dict):
+    RULES_PATH.write_text(json.dumps(rules, indent=2, ensure_ascii=False))
+    st.cache_data.clear()
+
+def get_perfiles(rules: dict, df=None) -> list[str]:
+    """
+    Dynamic union: profiles declared in PROCESS_RULES.json + profiles used in DB.
+    This means a new profile created via the form is immediately available everywhere,
+    and profiles assigned in DB but not yet in JSON are also shown.
+    """
+    from_json = sorted(rules.get("profiles", {}).keys())
+    from_db   = sorted(df["perfil_proceso"].dropna().unique().tolist()) if df is not None else []
+    merged    = sorted(set(from_json + from_db + _PERFILES_FALLBACK) - {"p-importado", ""})
+    return merged
+
 
 # ─── Profile knowledge: what C1/C2/C3 means per perfil ───────────────────────
 # Used to show context in candidate review cards.
+# Falls back gracefully for profiles created after this file was last edited.
 
 PROFILE_CONTEXT = {
     "p-meson": {
@@ -215,6 +250,35 @@ PROFILE_CONTEXT = {
     },
 }
 
+def get_profile_context(perfil: str, rules: dict) -> dict:
+    """
+    Return PROFILE_CONTEXT entry for a perfil.
+    Falls back to a generated context from PROCESS_RULES.json for new profiles.
+    """
+    if perfil in PROFILE_CONTEXT:
+        return PROFILE_CONTEXT[perfil]
+    # Auto-generate from rules for profiles created via the new-profile form
+    if rules and perfil in rules.get("profiles", {}):
+        p = rules["profiles"][perfil]
+        drivers = " + ".join(p.get("primary_drivers", []) + p.get("secondary_drivers", []))
+        thresholds = p.get("complexity_thresholds", {})
+        levels = {lvl: t.get("description", f"{lvl} — sin descripción") for lvl, t in thresholds.items()}
+        return {
+            "primary_driver": drivers or "—",
+            "secondary_driver": "—",
+            "driver_note": p.get("description", "Perfil creado manualmente. Edita PROCESS_RULES.json para agregar contexto."),
+            "levels": levels,
+            "cost_implication": "Nuevo perfil — sin benchmarks de costo aún. Calibrar con calibration.py.",
+        }
+    return {
+        "primary_driver": "desconocido",
+        "secondary_driver": "—",
+        "driver_note": "Perfil sin contexto registrado.",
+        "levels": {"C1": "—", "C2": "—", "C3": "—"},
+        "cost_implication": "Sin datos.",
+    }
+
+
 # ─── DB helpers ───────────────────────────────────────────────────────────────
 
 def get_conn():
@@ -229,13 +293,90 @@ def load_products():
         SELECT id, handle, perfil_proceso, complejidad, k_num,
                familia, subfamilia, descripcion_web, url,
                dim_l_mm, dim_w_mm, dim_h_mm, dim_diameter_mm, dim_espesor_mm,
-               dim_confidence, G, D, validated, validated_by, validated_at
+               dim_confidence, G, D, validated, validated_by, validated_at,
+               image_url, bom_materials, bom_consumables
         FROM products
         WHERE perfil_proceso != 'p-importado'
         ORDER BY perfil_proceso, complejidad, handle
     """, conn)
     conn.close()
     return df
+
+
+def save_bom(handle: str, mat_rows: list, cons_rows: list):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE products SET bom_materials=?, bom_consumables=? WHERE handle=?",
+        (json.dumps(mat_rows, ensure_ascii=False),
+         json.dumps(cons_rows, ensure_ascii=False),
+         handle)
+    )
+    conn.commit()
+    conn.close()
+    st.cache_data.clear()
+
+
+def product_bom_expander(row: dict, key_prefix: str = "bom"):
+    """Inline BOM editor embedded inside a product card."""
+    handle     = row.get("handle", "")
+    saved_mat  = json.loads(row.get("bom_materials",  "[]") or "[]")
+    saved_cons = json.loads(row.get("bom_consumables","[]") or "[]")
+
+    mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","kg_ml":0.0,"precio_kg":3600,"total":0}]
+    cons_default = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
+
+    prefix = f"{key_prefix}_{handle}"
+
+    st.markdown('<div class="dulox-section-label" style="margin-bottom:0.35rem;">MATERIALES</div>', unsafe_allow_html=True)
+    mat_df = st.data_editor(
+        pd.DataFrame(mat_default),
+        key=f"bomedit_mat_{prefix}",
+        use_container_width=True,
+        num_rows="dynamic",
+        hide_index=True,
+        column_config={
+            "total":     st.column_config.NumberColumn("Total $", format="$ %d"),
+            "precio_kg": st.column_config.NumberColumn("$/kg o $/u", format="$ %d"),
+            "kg_ml":     st.column_config.NumberColumn("kg / ML / u"),
+        }
+    )
+
+    st.markdown('<div class="dulox-section-label" style="margin:0.5rem 0 0.35rem 0;">CONSUMIBLES</div>', unsafe_allow_html=True)
+    cons_df = st.data_editor(
+        pd.DataFrame(cons_default),
+        key=f"bomedit_cons_{prefix}",
+        use_container_width=True,
+        num_rows="dynamic",
+        hide_index=True,
+        column_config={
+            "Total":    st.column_config.NumberColumn("Total $", format="$ %d"),
+            "Precio_u": st.column_config.NumberColumn("Precio u.", format="$ %d"),
+            "Cantidad": st.column_config.NumberColumn("Cant."),
+        }
+    )
+
+    mat_total  = int(mat_df["total"].fillna(0).sum())  if isinstance(mat_df, pd.DataFrame) and "total"  in mat_df.columns else 0
+    cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total"  in cons_df.columns else 0
+
+    col_cost, col_btn = st.columns([3, 1])
+    col_cost.markdown(
+        f'<div style="font-size:0.88rem;padding:0.3rem 0;">'
+        f'<span style="color:var(--text-dim);">Mat: </span>'
+        f'<span style="color:var(--text);font-weight:600;">${mat_total:,}</span>'
+        f'<span style="color:var(--text-dim);"> · Cons: </span>'
+        f'<span style="color:var(--text);font-weight:600;">${cons_total:,}</span>'
+        f'<span style="color:var(--text-dim);"> · Total: </span>'
+        f'<span style="color:var(--green);font-weight:700;">${mat_total+cons_total:,}</span>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+    if col_btn.button("💾 Guardar BOM", key=f"savebom_{prefix}", type="primary"):
+        save_bom(
+            handle,
+            mat_df.to_dict("records") if isinstance(mat_df, pd.DataFrame) else mat_default,
+            cons_df.to_dict("records") if isinstance(cons_df, pd.DataFrame) else cons_default,
+        )
+        st.success(f"✅ BOM guardado — {handle}")
 
 @st.cache_data(ttl=5)
 def load_history(handle):
@@ -290,32 +431,74 @@ def mark_validated(handle, reviewer):
 # ─── Product image fetcher ───────────────────────────────────────────────────
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_product_image(url: str) -> str | None:
+def _scrape_product_image(url: str) -> str | None:
     """
-    Fetch og:image URL from a Shopify product page.
-    Returns the CDN image URL string, or None on failure.
-    Cached for 1h per URL — only one HTTP request per product per session.
+    Fetch og:image:secure_url (or og:image) from a Shopify product page.
+    Returns the CDN image URL string (always https), or None on failure.
+    Cached 1h per URL — only one HTTP request per product per session.
     """
     if not url:
         return None
     try:
-        resp = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
-        match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\'](https://[^"\']+)["\']', resp.text)
-        if not match:
-            match = re.search(r'<meta[^>]+content=["\'](https://[^"\']+)["\'][^>]+property=["\']og:image["\']', resp.text)
-        return match.group(1).split("?")[0] if match else None
+        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        text = resp.text
+        # Prefer og:image:secure_url (always https)
+        m = re.search(r'<meta[^>]+property=["\']og:image:secure_url["\'][^>]+content=["\'](https://[^"\']+)["\']', text)
+        if not m:
+            m = re.search(r'<meta[^>]+content=["\'](https://[^"\']+)["\'][^>]+property=["\']og:image:secure_url["\']', text)
+        # Fall back to og:image (may be http or https)
+        if not m:
+            m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\'](https?://[^"\']+)["\']', text)
+        if not m:
+            m = re.search(r'<meta[^>]+content=["\'](https?://[^"\']+)["\'][^>]+property=["\']og:image["\']', text)
+        if m:
+            img = m.group(1).split("?")[0].replace("http://", "https://", 1)
+            return img
+        return None
     except Exception:
         return None
 
 
+def get_product_image(row: dict) -> str | None:
+    """
+    Return the image URL for a product row.
+    1. Use DB-cached image_url if present (populated by fetch_images.py).
+    2. Fall back to live scrape and save result to DB.
+    """
+    img = row.get("image_url")
+    if img:
+        return img
+    url = row.get("url", "")
+    if not url:
+        return None
+    # Live scrape (cached in memory for 1h)
+    img = _scrape_product_image(url)
+    if img:
+        # Persist to DB so next load from DB will have it
+        try:
+            conn = get_conn()
+            conn.execute("UPDATE products SET image_url = ? WHERE handle = ?",
+                         (img, row.get("handle", "")))
+            conn.commit()
+            conn.close()
+            st.cache_data.clear()  # invalidate load_products cache
+        except Exception:
+            pass
+    return img
+
+
 # ─── Audit candidates (replicate Test 3 logic) ────────────────────────────────
 
-def compute_candidates(df):
+def compute_candidates(df, rules=None):
     """Return list of products where another bucket is ≥40% closer.
     Includes reasoning: which driver is driving the suggestion and why."""
-    G_NOT_PRIMARY = {"p-meson", "p-cocina-gas", "p-carro-bandejero",
-                     "p-lavadero", "p-electrico", "p-refrigerado",
-                     "p-rejilla", "p-tina", "p-custom"}
+    # Build G_NOT_PRIMARY from PROCESS_RULES.json — profiles where g_is_primary=false
+    if rules and "profiles" in rules:
+        G_NOT_PRIMARY = {p for p, d in rules["profiles"].items() if not d.get("g_is_primary", True)}
+    else:
+        G_NOT_PRIMARY = {"p-meson", "p-cocina-gas", "p-carro-bandejero",
+                         "p-lavadero", "p-electrico", "p-refrigerado",
+                         "p-rejilla", "p-tina", "p-custom"}
 
     # Build bucket centroids + stats
     buckets = {}
@@ -345,7 +528,7 @@ def compute_candidates(df):
     def build_reasoning(g, d, perfil, current_comp, suggested_comp, current_bucket, suggested_bucket):
         """Generate a human-readable explanation of why the model flagged this product."""
         reasons = []
-        context = PROFILE_CONTEXT.get(perfil, {})
+        context = get_profile_context(perfil, rules or {})
         primary = context.get("primary_driver", "G/D")
 
         k_order = {"C1": 1, "C2": 2, "C3": 3}
@@ -489,14 +672,14 @@ def product_card(row, reviewer_key="reviewer"):
 
     img_col, info_col = st.columns([1, 3])
     with img_col:
-        img_url = fetch_product_image(url)
+        img_url = get_product_image(row if isinstance(row, dict) else row.to_dict())
         if img_url:
             st.image(img_url, use_container_width=True)
         else:
             st.markdown(
                 '<div style="height:100px;display:flex;align-items:center;'
-                'justify-content:center;color:#484f58;font-size:0.75rem;'
-                'border:1px solid #30363d;border-radius:6px;">sin imagen</div>',
+                'justify-content:center;color:var(--text-muted);font-size:0.75rem;'
+                'border:1px solid var(--border);border-radius:6px;">sin imagen</div>',
                 unsafe_allow_html=True
             )
 
@@ -563,6 +746,14 @@ def product_card(row, reviewer_key="reviewer"):
                     st.success(f"Guardado: {perfil} {comp} → {new_perfil} {new_comp}")
                     st.rerun()
 
+    # BOM editor
+    bom_mat  = row.get("bom_materials",  "") or ""
+    bom_cons = row.get("bom_consumables","") or ""
+    has_bom  = bool(bom_mat and bom_mat != "[]") or bool(bom_cons and bom_cons != "[]")
+    bom_label = "📦 BOM de costos ✅" if has_bom else "📦 BOM de costos"
+    with st.expander(bom_label):
+        product_bom_expander(row if isinstance(row, dict) else row, reviewer_key)
+
     # History
     hist = load_history(handle)
     if not hist.empty:
@@ -577,158 +768,147 @@ def product_card(row, reviewer_key="reviewer"):
 
 # ─── Pages ────────────────────────────────────────────────────────────────────
 
-def candidate_context_card(c, df, reviewer_key):
-    """Rich card for a single audit candidate showing full reasoning + bucket comparison."""
+def candidate_context_card(c, df, reviewer_key, index=0):
+    """Compact candidate card — image + pill row + inline decision controls."""
     row = df[df["handle"] == c["handle"]]
     if row.empty:
         return
     row = row.iloc[0].to_dict()
 
-    handle      = c["handle"]
-    perfil      = c["current_perfil"]
-    curr_comp   = c["current_comp"]
-    sugg_comp   = c["suggested_comp"]
-    reasoning   = c["reasoning"]
-    ctx         = PROFILE_CONTEXT.get(perfil, {})
+    handle    = c["handle"]
+    perfil    = c["current_perfil"]
+    curr_comp = c["current_comp"]
+    sugg_comp = c["suggested_comp"]
+    reasoning = c["reasoning"]
+    rules     = load_rules()
+    ctx       = get_profile_context(perfil, rules)
+    url       = row.get("url", "")
+    desc      = str(row.get("descripcion_web", "") or "")
+    validated = row.get("validated", 0)
+    reviewer  = st.session_state.get(reviewer_key, "")
 
-    # ── Card header ───────────────────────────────────────────────────────────
-    direction_emoji = "⬆️" if reasoning["upgrade"] else "⬇️"
-    url = row.get("url", "")
-    url_md = f' <a href="{url}" style="font-size:0.75rem;color:#58a6ff;" target="_blank">↗ dulox.cl</a>' if url else ""
+    # Accent color: upgrade = amber, downgrade = blue, validated = green
+    if validated:
+        accent = "#238636"
+    elif reasoning["upgrade"]:
+        accent = "#9e6a03"
+    else:
+        accent = "#1f6feb"
 
-    hdr_col, img_col = st.columns([4, 1])
-    with hdr_col:
+    direction_label = "subir" if reasoning["upgrade"] else "bajar"
+    g_str = str(int(c["G"])) if c["G"] is not None else "—"
+    d_str = str(int(c["D"])) if c["D"] is not None else "—"
+
+    # ── Row: number + image + info block ─────────────────────────────────────
+    n_col, img_col, main_col = st.columns([0.3, 1, 6])
+
+    with n_col:
         st.markdown(
-            f'<div class="dulox-card">'
-            f'<div style="display:flex;align-items:center;gap:0.7rem;margin-bottom:0.5rem;">'
-            f'{direction_emoji} '
-            f'<code style="font-size:0.85rem;color:#79c0ff;background:#161b22;">{handle}</code>'
-            f'{url_md}'
-            f'</div>',
+            f'<div style="padding-top:0.6rem;font-size:1.4rem;font-weight:700;'
+            f'color:var(--text-label);text-align:right;">{index + 1}</div>',
             unsafe_allow_html=True
         )
+
     with img_col:
-        img_url = fetch_product_image(url)
+        img_url = get_product_image(row)
         if img_url:
             st.image(img_url, use_container_width=True)
+        else:
+            st.markdown(
+                '<div style="height:72px;display:flex;align-items:center;justify-content:center;'
+                'color:var(--border);font-size:0.7rem;border:1px solid var(--border-subtle);border-radius:4px;">—</div>',
+                unsafe_allow_html=True
+            )
 
-    desc = str(row.get("descripcion_web", "") or "")
-    if desc:
-        st.markdown(
-            f'<p style="color:#8b949e;font-size:0.82rem;margin:0 0 0.8rem 0;">{desc[:280]}</p>',
-            unsafe_allow_html=True
+    with main_col:
+        # Handle + link + validated pill on one line
+        val_pill = (
+            ' <span style="background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);'
+            'border-radius:10px;padding:1px 7px;font-size:0.7rem;">✅ validado</span>'
+            if validated else ""
         )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── Current → suggested comparison ────────────────────────────────────────
-    col1, col2, col3 = st.columns([5, 2, 5])
-    with col1:
-        cg = c['current_bucket'].get('g_mean')
-        cd = c['current_bucket'].get('d_mean')
-        cg_str = f"{cg:.2f}" if cg is not None else "—"
-        cd_str = f"{cd:.2f}" if cd is not None else "—"
-        level_txt = ctx.get("levels", {}).get(curr_comp, "")
+        url_link = (
+            f' <a href="{url}" style="color:var(--text-faint);font-size:0.75rem;" target="_blank">↗</a>'
+            if url else ""
+        )
         st.markdown(
-            f'<div class="dulox-card">'
-            f'<div class="dulox-section-label">CATEGORÍA ACTUAL</div>'
-            f'<div style="display:flex;gap:0.5rem;align-items:center;margin:0.4rem 0;">'
-            f'{profile_badge(perfil)} {complexity_badge(curr_comp)}'
+            f'<div style="border-left:3px solid {accent};padding-left:0.75rem;">'
+            f'<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">'
+            f'<span style="font-family:monospace;font-size:0.88rem;color:var(--text-dim);font-weight:600;">'
+            f'{handle}</span>{url_link}{val_pill}'
             f'</div>'
-            f'<div style="font-size:0.78rem;color:#768390;margin-top:0.4rem;">{level_txt}</div>'
-            f'<div style="font-size:0.75rem;color:#484f58;margin-top:0.5rem;">'
-            f'Centroide G={cg_str} D={cd_str} · n={c["current_bucket"]["n"]}'
-            f'</div></div>',
-            unsafe_allow_html=True
-        )
-    with col2:
-        g_val = c["G"]
-        d_val = c["D"]
-        g_str = str(int(g_val)) if g_val is not None else "—"
-        d_str = str(int(d_val)) if d_val is not None else "—"
-        st.markdown(
-            f'<div style="text-align:center;padding:1.2rem 0;">'
-            f'<div style="font-size:1.6rem;">→</div>'
-            f'<div style="font-size:0.75rem;color:#768390;margin-top:0.4rem;">Este producto</div>'
-            f'<div style="font-family:monospace;font-size:0.88rem;color:#cdd9e5;margin-top:0.3rem;">'
-            f'G=<b>{g_str}</b> D=<b>{d_str}</b></div>'
-            f'<div class="dist-chip" style="margin-top:0.5rem;">Δ={c["gap"]:.3f}</div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    with col3:
-        g_m = c['suggested_bucket'].get('g_mean')
-        d_m = c['suggested_bucket'].get('d_mean')
-        g_m_str = f"{g_m:.2f}" if g_m is not None else "—"
-        d_m_str = f"{d_m:.2f}" if d_m is not None else "—"
-        sugg_level_txt = ctx.get("levels", {}).get(sugg_comp, "")
-        st.markdown(
-            f'<div class="dulox-card-accent">'
-            f'<div class="dulox-section-label" style="color:#388bfd;">SUGERIDO</div>'
-            f'<div style="display:flex;gap:0.5rem;align-items:center;margin:0.4rem 0;">'
-            f'{profile_badge(perfil)} {complexity_badge(sugg_comp)}'
+            # Pill row: perfil · curr_comp → sugg_comp · drivers · gap
+            f'<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.35rem;flex-wrap:wrap;">'
+            f'{profile_badge(perfil)}'
+            f'{complexity_badge(curr_comp)}'
+            f'<span style="color:{accent};font-weight:700;font-size:0.88rem;">→ {sugg_comp}</span>'
+            f'<span style="color:var(--text-faint);font-size:0.78rem;">({direction_label})</span>'
+            f'<span style="background:var(--bg-subtle);border:1px solid var(--border);border-radius:4px;'
+            f'padding:1px 6px;font-family:monospace;font-size:0.72rem;color:var(--text-label);">'
+            f'G={g_str} D={d_str} · Δ={c["gap"]:.2f}</span>'
             f'</div>'
-            f'<div style="font-size:0.78rem;color:#768390;margin-top:0.4rem;">{sugg_level_txt}</div>'
-            f'<div style="font-size:0.75rem;color:#484f58;margin-top:0.5rem;">'
-            f'Centroide G={g_m_str} D={d_m_str} · n={c["suggested_bucket"]["n"]}'
-            f'</div></div>',
+            # Description (trimmed, muted)
+            + (f'<div style="font-size:0.78rem;color:var(--text-faint);margin-top:0.3rem;'
+               f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:700px;">'
+               f'{desc[:180]}</div>' if desc else "")
+            + f'</div>',
             unsafe_allow_html=True
         )
 
-    st.markdown('<div style="height:0.5rem;"></div>', unsafe_allow_html=True)
+    # ── Detail expanders (collapsed by default — click to dig in) ────────────
+    with st.expander("📋 Razonamiento + decisión", expanded=False):
 
-    # Why this suggestion was made
-    with st.expander("🧮 Por qué el modelo hace esta sugerencia", expanded=True):
-        st.markdown("**Driver que genera la discrepancia:**")
-        for r in reasoning["reasons"]:
-            st.markdown(f"- {r}")
-
+        # Reasoning summary
+        reason_lines = reasoning.get("reasons", [])
+        if reason_lines:
+            st.markdown(
+                '<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.5rem;">'
+                + "<br>".join(f"• {r}" for r in reason_lines)
+                + "</div>",
+                unsafe_allow_html=True
+            )
         if reasoning.get("driver_warning"):
             st.warning(reasoning["driver_warning"])
 
-        st.markdown("**Driver primario declarado para este perfil:** "
-                    f"`{ctx.get('primary_driver', '—')}`")
-        if ctx.get("driver_note"):
-            st.caption(ctx["driver_note"])
-
-    # What changing implies
-    with st.expander("💰 Qué implicaría el cambio"):
-        st.markdown(reasoning.get("implication", "—"))
-
-        # Show the level definitions side by side
+        # Current vs suggested side by side — compact
         levels = ctx.get("levels", {})
-        if curr_comp in levels and sugg_comp in levels:
-            c1_, c2_ = st.columns(2)
-            with c1_:
-                st.markdown(f"**{curr_comp} (actual):**")
-                st.markdown(levels[curr_comp])
-            with c2_:
-                st.markdown(f"**{sugg_comp} (sugerido):**")
-                st.markdown(levels[sugg_comp])
+        lc, lsep, ls = st.columns([5, 0.3, 5])
+        cg = c['current_bucket'].get('g_mean')
+        cd = c['current_bucket'].get('d_mean')
+        sg = c['suggested_bucket'].get('g_mean')
+        sd = c['suggested_bucket'].get('d_mean')
+        _fmt = lambda v: f"{v:.2f}" if v is not None else "—"
+        lc.markdown(
+            f'<div style="border:1px solid var(--border);border-radius:6px;padding:0.6rem 0.8rem;">'
+            f'<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:0.08em;color:var(--text-label);margin-bottom:0.3rem;">ACTUAL</div>'
+            f'{complexity_badge(curr_comp)}'
+            f'<div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.3rem;">'
+            f'{levels.get(curr_comp,"—")}</div>'
+            f'<div style="font-size:0.7rem;color:var(--text-faint);margin-top:0.3rem;">'
+            f'G̅={_fmt(cg)} D̅={_fmt(cd)} n={c["current_bucket"]["n"]}'
+            f'</div></div>',
+            unsafe_allow_html=True
+        )
+        lsep.markdown('<div style="text-align:center;padding-top:1.5rem;color:var(--text-faint);">→</div>', unsafe_allow_html=True)
+        ls.markdown(
+            f'<div style="border:1px solid {accent};border-radius:6px;padding:0.6rem 0.8rem;">'
+            f'<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:0.08em;color:{accent};margin-bottom:0.3rem;">SUGERIDO</div>'
+            f'{complexity_badge(sugg_comp)}'
+            f'<div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.3rem;">'
+            f'{levels.get(sugg_comp,"—")}</div>'
+            f'<div style="font-size:0.7rem;color:var(--text-faint);margin-top:0.3rem;">'
+            f'G̅={_fmt(sg)} D̅={_fmt(sd)} n={c["suggested_bucket"]["n"]}'
+            f'</div></div>',
+            unsafe_allow_html=True
+        )
 
-    # Sample products from suggested bucket for comparison
-    with st.expander(f"👀 Productos del grupo {sugg_comp} para comparar "
-                     f"(n={c['suggested_bucket']['n']})"):
-        bucket_products = df[
-            (df["perfil_proceso"] == perfil) &
-            (df["complejidad"] == sugg_comp)
-        ][["handle", "G", "D", "dim_l_mm", "dim_w_mm", "dim_espesor_mm",
-           "descripcion_web"]].head(8)
+        st.markdown('<div style="height:0.6rem;"></div>', unsafe_allow_html=True)
 
-        if not bucket_products.empty:
-            for _, bp in bucket_products.iterrows():
-                g_ = int(bp["G"]) if pd.notna(bp["G"]) else "—"
-                d_ = int(bp["D"]) if pd.notna(bp["D"]) else "—"
-                desc_ = str(bp["descripcion_web"] or "")[:100]
-                st.markdown(f"- **{bp['handle']}**  G={g_} D={d_}")
-                if desc_:
-                    st.caption(f"  {desc_}")
-
-    # Action controls
-    with st.expander("✏️ Decisión", expanded=not row.get("validated")):
-        reviewer = st.session_state.get(reviewer_key, "")
-
+        # Decision controls
         new_perfil = st.selectbox(
-            "Perfil proceso", PERFILES,
+            "Perfil", PERFILES,
             index=PERFILES.index(perfil) if perfil in PERFILES else 0,
             key=f"perfil_{handle}"
         )
@@ -737,8 +917,8 @@ def candidate_context_card(c, df, reviewer_key):
             index=COMPLEJIDADES.index(curr_comp) if curr_comp in COMPLEJIDADES else 0,
             key=f"comp_{handle}"
         )
-        reason = st.text_input(
-            "Razón (obligatorio si cambia algo)",
+        reason_in = st.text_input(
+            "Razón del cambio",
             placeholder="ej: Descripción indica 1 quemador → C1 correcto",
             key=f"reason_{handle}"
         )
@@ -750,51 +930,41 @@ def candidate_context_card(c, df, reviewer_key):
                     st.error("Ingresa tu nombre en el sidebar")
                 else:
                     mark_validated(handle, reviewer)
-                    st.success("Validado")
                     st.rerun()
         with cb:
-            if st.button(f"💾 Mover a {sugg_comp}", key=f"quick_{handle}",
-                         help=f"Aplica la sugerencia del modelo: {curr_comp} → {sugg_comp}"):
+            if st.button(f"→ Mover a {sugg_comp}", key=f"quick_{handle}", type="primary"):
                 if not reviewer:
                     st.error("Ingresa tu nombre en el sidebar")
-                elif not reason.strip():
+                elif not reason_in.strip():
                     st.error("Escribe la razón")
                 else:
-                    save_reclassification(
-                        handle, perfil, perfil, curr_comp, sugg_comp,
-                        reason.strip(), reviewer
-                    )
-                    st.success(f"Movido a {sugg_comp}")
+                    save_reclassification(handle, perfil, perfil, curr_comp, sugg_comp,
+                                          reason_in.strip(), reviewer)
                     st.rerun()
         with cc:
             changed = (new_perfil != perfil) or (new_comp != curr_comp)
-            if st.button("💾 Guardar personalizado", key=f"save_{handle}",
-                         disabled=not changed):
+            if st.button("💾 Personalizado", key=f"save_{handle}", disabled=not changed):
                 if not reviewer:
                     st.error("Ingresa tu nombre en el sidebar")
-                elif not reason.strip():
+                elif not reason_in.strip():
                     st.error("Escribe la razón")
                 else:
-                    save_reclassification(
-                        handle, perfil, new_perfil, curr_comp, new_comp,
-                        reason.strip(), reviewer
-                    )
-                    st.success(f"Guardado")
+                    save_reclassification(handle, perfil, new_perfil, curr_comp, new_comp,
+                                          reason_in.strip(), reviewer)
                     st.rerun()
 
-    # History
-    hist = load_history(handle)
-    if not hist.empty:
-        with st.expander(f"Historial ({len(hist)} cambios)"):
-            for _, h in hist.iterrows():
-                st.markdown(
-                    f"- `{h['changed_at'][:16]}` **{h['changed_by']}**: "
-                    f"`{h['old_perfil']} {h['old_complejidad']}` → "
-                    f"`{h['new_perfil']} {h['new_complejidad']}` — _{h['reason']}_"
+        # History inline
+        hist = load_history(handle)
+        if not hist.empty:
+            st.markdown(
+                '<div style="font-size:0.72rem;color:var(--text-faint);margin-top:0.5rem;">'
+                + " · ".join(
+                    f'{h["changed_at"][:10]} {h["old_complejidad"]}→{h["new_complejidad"]} ({h["changed_by"]})'
+                    for _, h in hist.iterrows()
                 )
-
-    if row.get("validated"):
-        st.success("✅ Ya validado")
+                + "</div>",
+                unsafe_allow_html=True
+            )
 
 
 def page_candidates(df, candidates, reviewer_key):
@@ -830,8 +1000,8 @@ def page_candidates(df, candidates, reviewer_key):
 
     st.divider()
 
-    for c in candidates:
-        candidate_context_card(c, df, reviewer_key)
+    for i, c in enumerate(candidates):
+        candidate_context_card(c, df, reviewer_key, index=i)
         st.divider()
 
 
@@ -848,7 +1018,7 @@ def page_por_perfil(df, reviewer_key):
 
     st.markdown(
         f'<div style="display:flex;align-items:center;gap:0.6rem;margin:0.5rem 0 1rem 0;">'
-        f'<span style="color:#768390;font-size:0.88rem;">{len(bucket)} productos en</span>'
+        f'<span style="color:var(--text-label);font-size:0.88rem;">{len(bucket)} productos en</span>'
         f'{profile_badge(perfil)} {complexity_badge(comp)}'
         f'</div>',
         unsafe_allow_html=True
@@ -909,16 +1079,16 @@ def page_dashboard(df):
     st.markdown(
         f'<div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap;">'
         f'<div class="dulox-card" style="flex:1;min-width:120px;text-align:center;">'
-        f'<div style="font-size:2rem;font-weight:700;color:#e6edf3;">{total}</div>'
+        f'<div style="font-size:2rem;font-weight:700;color:var(--text);">{total}</div>'
         f'<div class="dulox-section-label">TOTAL PRODUCTOS</div></div>'
         f'<div class="dulox-card" style="flex:1;min-width:120px;text-align:center;">'
-        f'<div style="font-size:2rem;font-weight:700;color:#3fb950;">{val}</div>'
+        f'<div style="font-size:2rem;font-weight:700;color:var(--green);">{val}</div>'
         f'<div class="dulox-section-label">VALIDADOS ({pct_val:.0f}%)</div></div>'
         f'<div class="dulox-card" style="flex:1;min-width:120px;text-align:center;">'
-        f'<div style="font-size:2rem;font-weight:700;color:#e3b341;">{total-val}</div>'
+        f'<div style="font-size:2rem;font-weight:700;color:var(--yellow);">{total-val}</div>'
         f'<div class="dulox-section-label">SIN VALIDAR</div></div>'
         f'<div class="dulox-card" style="flex:1;min-width:120px;text-align:center;">'
-        f'<div style="font-size:2rem;font-weight:700;color:#f85149;">{no_dims}</div>'
+        f'<div style="font-size:2rem;font-weight:700;color:var(--red);">{no_dims}</div>'
         f'<div class="dulox-section-label">SIN DIMS G/D</div></div>'
         f'</div>',
         unsafe_allow_html=True
@@ -929,9 +1099,9 @@ def page_dashboard(df):
         f'<div class="dulox-card" style="margin-bottom:1.5rem;">'
         f'<div class="dulox-section-label">DISTRIBUCIÓN DE COMPLEJIDAD</div>'
         f'<div style="display:flex;gap:1.5rem;margin-top:0.6rem;">'
-        f'<div>{complexity_badge("C1")} <span style="color:#cdd9e5;font-size:1.1rem;font-weight:600;margin-left:0.4rem;">{c1_n}</span></div>'
-        f'<div>{complexity_badge("C2")} <span style="color:#cdd9e5;font-size:1.1rem;font-weight:600;margin-left:0.4rem;">{c2_n}</span></div>'
-        f'<div>{complexity_badge("C3")} <span style="color:#cdd9e5;font-size:1.1rem;font-weight:600;margin-left:0.4rem;">{c3_n}</span></div>'
+        f'<div>{complexity_badge("C1")} <span style="color:var(--text-dim);font-size:1.1rem;font-weight:600;margin-left:0.4rem;">{c1_n}</span></div>'
+        f'<div>{complexity_badge("C2")} <span style="color:var(--text-dim);font-size:1.1rem;font-weight:600;margin-left:0.4rem;">{c2_n}</span></div>'
+        f'<div>{complexity_badge("C3")} <span style="color:var(--text-dim);font-size:1.1rem;font-weight:600;margin-left:0.4rem;">{c3_n}</span></div>'
         f'</div></div>',
         unsafe_allow_html=True
     )
@@ -976,43 +1146,273 @@ def page_dashboard(df):
     else:
         st.dataframe(hist, use_container_width=True, hide_index=True)
 
+# ─── New profile creation ─────────────────────────────────────────────────────
+
+def page_nuevo_perfil(rules: dict):
+    st.markdown('<h2>➕ Nuevo Perfil Proceso</h2>', unsafe_allow_html=True)
+    st.markdown(
+        '<p style="color:var(--text-label);font-size:0.88rem;">'
+        'Crea un nuevo <code>perfil_proceso</code>. Se escribe en <code>PROCESS_RULES.json</code> '
+        '— la única fuente de verdad. Una vez guardado, el perfil estará disponible '
+        'inmediatamente en <b>todos los selectores</b> del sistema '
+        '(review.py, calibration.py, product_intake.py, audit_model.py).</p>',
+        unsafe_allow_html=True
+    )
+
+    existing = sorted(rules.get("profiles", {}).keys())
+
+    with st.form("nuevo_perfil_form"):
+        st.markdown("#### Identificación")
+        fc1, fc2 = st.columns(2)
+        raw_name = fc1.text_input(
+            "Nombre del perfil",
+            placeholder="ej: campana-extraccion",
+            help="Se añade el prefijo 'p-' automáticamente si no lo tiene. Solo minúsculas y guiones."
+        )
+        description = fc2.text_input("Descripción corta", placeholder="ej: Campanas de extracción industriales")
+
+        st.markdown("#### Drivers")
+        dc1, dc2, dc3 = st.columns(3)
+        primary_drivers   = dc1.multiselect("Drivers primarios",   ["G","D","C","X"], default=["G"])
+        secondary_drivers = dc2.multiselect("Drivers secundarios", ["G","D","C","X"], default=["X"])
+        g_is_primary      = dc3.checkbox("G es driver primario", value=True,
+                                          help="Desmarcar si el tamaño NO diferencia la complejidad (ej. mesones)")
+        c_driver = st.text_input(
+            "Campo C en DB (opcional)",
+            placeholder="ej: num_cajones, num_quemadores — dejar vacío si C no aplica",
+            help="Nombre del campo numérico en products.db que representa el conteo de componentes."
+        )
+
+        st.markdown("#### Procesos activos")
+        processes = st.multiselect(
+            "Procesos que aplican a este perfil",
+            KNOWN_PROCESSES,
+            default=["armado_trazado", "soldadura", "pulido"]
+        )
+
+        st.markdown("#### Umbrales de complejidad")
+        st.caption("Puntos totales (suma de scores G+D+C+X) que definen cada nivel.")
+        uc1, uc2, uc3 = st.columns(3)
+        with uc1:
+            c1_lo   = st.number_input("C1 mín", value=1,  min_value=0, key="np_c1lo")
+            c1_hi   = st.number_input("C1 máx", value=2,  min_value=0, key="np_c1hi")
+            c1_desc = st.text_input("C1 descripción", value="Simple, sin mecanismo", key="np_c1d")
+        with uc2:
+            c2_lo   = st.number_input("C2 mín", value=3,  min_value=0, key="np_c2lo")
+            c2_hi   = st.number_input("C2 máx", value=5,  min_value=0, key="np_c2hi")
+            c2_desc = st.text_input("C2 descripción", value="Estándar, algún mecanismo o característica", key="np_c2d")
+        with uc3:
+            c3_lo   = st.number_input("C3 mín", value=6,  min_value=0, key="np_c3lo")
+            c3_hi   = st.number_input("C3 máx", value=99, min_value=0, key="np_c3hi")
+            c3_desc = st.text_input("C3 descripción", value="Alta complejidad, acabado especial o múltiples componentes", key="np_c3d")
+
+        submitted = st.form_submit_button("💾 Crear perfil en PROCESS_RULES.json", type="primary")
+
+    if submitted:
+        # Normalize name
+        name = raw_name.strip().lower().replace(" ", "-")
+        if not name.startswith("p-"):
+            name = f"p-{name}"
+
+        # Validate
+        if not name or name == "p-":
+            st.error("Ingresa un nombre de perfil.")
+            return
+        if name in existing:
+            st.error(f"El perfil `{name}` ya existe en PROCESS_RULES.json.")
+            return
+        if not re.match(r'^p-[a-z0-9-]+$', name):
+            st.error("Nombre inválido. Usa solo minúsculas, números y guiones (ej. p-tina-industrial).")
+            return
+
+        new_profile = {
+            "description":        description or f"Perfil {name}",
+            "primary_drivers":    primary_drivers,
+            "secondary_drivers":  secondary_drivers,
+            "c_driver":           c_driver.strip() or None,
+            "g_is_primary":       g_is_primary,
+            "processes":          processes,
+            "x_flags":            {},
+            "complexity_thresholds": {
+                "C1": {"min_points": c1_lo, "max_points": c1_hi, "description": c1_desc},
+                "C2": {"min_points": c2_lo, "max_points": c2_hi, "description": c2_desc},
+                "C3": {"min_points": c3_lo, "max_points": c3_hi, "description": c3_desc},
+            },
+            "cost_benchmarks": {
+                "C2": {
+                    "anchor_sku": None, "short_name": None,
+                    "dims": {"L_mm": None, "W_mm": None, "H_mm": None, "espesor_mm": None},
+                    "material_total_clp": None, "consumables_total_clp": None,
+                    "calibrated": False, "calibration_date": None,
+                    "notes": "Pendiente: ingresar BOM en calibration.py"
+                },
+                "C3": {
+                    "anchor_sku": None, "short_name": None,
+                    "dims": {"L_mm": None, "W_mm": None, "H_mm": None, "espesor_mm": None},
+                    "material_total_clp": None, "consumables_total_clp": None,
+                    "calibrated": False, "calibration_date": None,
+                    "notes": "Pendiente: ingresar BOM en calibration.py"
+                }
+            },
+            "expected_cost_ratios": {
+                "C2_to_C3": {"material": None, "consumables": None, "notes": "Pendiente calibración"}
+            }
+        }
+
+        rules["profiles"][name] = new_profile
+        rules["meta"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+        save_rules(rules)
+
+        # Store in session state — st.success before st.rerun() is discarded
+        st.session_state["_perfil_created"] = name
+        st.rerun()
+
+    # Show success banner after rerun (stored before rerun so it survives)
+    if "_perfil_created" in st.session_state:
+        created_name = st.session_state.pop("_perfil_created")
+        st.success(
+            f"✅ Perfil `{created_name}` creado correctamente.\n\n"
+            f"Ya disponible en todos los selectores del sistema.\n\n"
+            f"**Próximos pasos:**  \n"
+            f"1. Asigna productos en 📋 Por Perfil o 🔎 Buscar Producto  \n"
+            f"2. Agrega X flags si aplica → calibration.py Tab 2  \n"
+            f"3. Calibra costos → calibration.py Tab 1 → 💾 Guardar Hallazgos  \n"
+            f"4. Ejecuta `/model-auditor full` para incluirlo en el ICM"
+        )
+
+    # Show existing profiles summary
+    if existing:
+        st.divider()
+        st.markdown(f'<div class="dulox-section-label">{len(existing)} PERFILES EN PROCESS_RULES.JSON</div>', unsafe_allow_html=True)
+        rows = []
+        for p in existing:
+            pd_data = rules["profiles"][p]
+            rows.append({
+                "Perfil": p,
+                "Drivers primarios": " + ".join(pd_data.get("primary_drivers", [])),
+                "Procesos": len(pd_data.get("processes", [])),
+                "X flags": len(pd_data.get("x_flags", {})),
+                "C2 calibrado": "✅" if pd_data.get("cost_benchmarks", {}).get("C2", {}).get("calibrated") else "—",
+                "C3 calibrado": "✅" if pd_data.get("cost_benchmarks", {}).get("C3", {}).get("calibrated") else "—",
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
 # ─── App ──────────────────────────────────────────────────────────────────────
 
-CSS = """
+# ─── Theme CSS ────────────────────────────────────────────────────────────────
+
+DARK_VARS = """
+    --bg:           #0d1117;
+    --bg-surface:   #161b22;
+    --bg-input:     #0d1117;
+    --bg-subtle:    #1c2128;
+    --bg-hover:     #30363d;
+    --border:       #30363d;
+    --border-subtle:#21262d;
+    --text:         #e6edf3;
+    --text-dim:     #cdd9e5;
+    --text-muted:   #8b949e;
+    --text-faint:   #484f58;
+    --text-label:   #768390;
+    --accent:       #58a6ff;
+    --green:        #3fb950;
+    --green-bg:     #0d3321;
+    --green-border: #238636;
+    --yellow:       #e3b341;
+    --yellow-bg:    #2d1b00;
+    --yellow-border:#9e6a03;
+    --red:          #f85149;
+    --red-bg:       #3d0c0c;
+    --red-border:   #da3633;
+    --blue:         #79c0ff;
+    --blue-bg:      #1c2128;
+    --blue-border:  #388bfd;
+    --link:         #1f6feb;
+    --link-border:  #388bfd;
+"""
+
+LIGHT_VARS = """
+    --bg:           #ffffff;
+    --bg-surface:   #f6f8fa;
+    --bg-input:     #ffffff;
+    --bg-subtle:    #eaeef2;
+    --bg-hover:     #d0d7de;
+    --border:       #d0d7de;
+    --border-subtle:#eaeef2;
+    --text:         #1f2328;
+    --text-dim:     #24292f;
+    --text-muted:   #57606a;
+    --text-faint:   #8c959f;
+    --text-label:   #6e7781;
+    --accent:       #0969da;
+    --green:        #1a7f37;
+    --green-bg:     #dafbe1;
+    --green-border: #2da44e;
+    --yellow:       #9a6700;
+    --yellow-bg:    #fff8c5;
+    --yellow-border:#bf8700;
+    --red:          #cf222e;
+    --red-bg:       #ffebe9;
+    --red-border:   #cf222e;
+    --blue:         #0969da;
+    --blue-bg:      #ddf4ff;
+    --blue-border:  #0969da;
+    --link:         #0969da;
+    --link-border:  #0969da;
+"""
+
+# Static CSS using CSS variables — works for both themes.
+# Variables are injected as a separate <style>:root{} block in build_css().
+CSS_STATIC = """
 <style>
 /* ── Base ─────────────────────────────────────────────────────────────── */
 html, body, [data-testid="stAppViewContainer"] {
-    background-color: #0d1117;
-    color: #e6edf3;
+    background-color: var(--bg) !important;
+    color: var(--text) !important;
+}
+/* Override Streamlit's own paragraph / markdown text color */
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] span,
+[data-testid="stText"] {
+    color: var(--text) !important;
 }
 [data-testid="stSidebar"] {
-    background-color: #161b22 !important;
-    border-right: 1px solid #30363d;
+    background-color: var(--bg-surface) !important;
+    border-right: 1px solid var(--border);
 }
-[data-testid="stSidebar"] * { color: #c9d1d9 !important; }
+[data-testid="stSidebar"] * { color: var(--text-dim) !important; }
 [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-    color: #58a6ff !important;
+    color: var(--accent) !important;
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
 }
+[data-testid="stMain"] { background-color: var(--bg) !important; }
+section[data-testid="stMain"] > div { background-color: var(--bg) !important; }
+/* Radio / checkbox labels */
+[data-testid="stRadio"] label span,
+[data-testid="stCheckbox"] label span { color: var(--text) !important; }
+/* Selectbox / text input labels */
+label[data-testid="stWidgetLabel"] { color: var(--text) !important; }
 
 /* ── Main title ───────────────────────────────────────────────────────── */
-h1 { color: #f0f6fc !important; font-weight: 700; letter-spacing: -0.02em; }
-h2 { color: #cdd9e5 !important; font-weight: 600; }
-h3 { color: #adbac7 !important; }
+h1 { color: var(--text) !important; font-weight: 700; letter-spacing: -0.02em; }
+h2 { color: var(--text-dim) !important; font-weight: 600; }
+h3 { color: var(--text-muted) !important; }
 
 /* ── Cards / containers ───────────────────────────────────────────────── */
 .dulox-card {
-    background: #161b22;
-    border: 1px solid #30363d;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 10px;
     padding: 1.2rem 1.4rem;
     margin-bottom: 1rem;
 }
 .dulox-card-accent {
-    background: #0d2137;
-    border: 1px solid #1f6feb;
+    background: var(--blue-bg);
+    border: 1px solid var(--link);
     border-radius: 10px;
     padding: 1rem 1.4rem;
     margin-bottom: 0.8rem;
@@ -1022,42 +1422,42 @@ h3 { color: #adbac7 !important; }
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #768390;
+    color: var(--text-label);
     margin-bottom: 0.3rem;
 }
 
 /* ── Complexity badges ────────────────────────────────────────────────── */
 .badge { display:inline-block; padding:2px 10px; border-radius:12px;
          font-size:0.78rem; font-weight:700; letter-spacing:0.04em; }
-.badge-c1 { background:#0d3321; color:#3fb950; border:1px solid #238636; }
-.badge-c2 { background:#2d1b00; color:#e3b341; border:1px solid #9e6a03; }
-.badge-c3 { background:#3d0c0c; color:#f85149; border:1px solid #da3633; }
-.badge-profile { background:#1c2128; color:#79c0ff; border:1px solid #388bfd; }
-.badge-ok  { background:#0d3321; color:#3fb950; border:1px solid #238636; }
-.badge-warn{ background:#2d1b00; color:#e3b341; border:1px solid #9e6a03; }
-.badge-gap { background:#3d0c0c; color:#f85149; border:1px solid #da3633; }
+.badge-c1 { background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); }
+.badge-c2 { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow-border); }
+.badge-c3 { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); }
+.badge-profile { background:var(--blue-bg); color:var(--blue); border:1px solid var(--blue-border); }
+.badge-ok   { background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); }
+.badge-warn { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow-border); }
+.badge-gap  { background:var(--red-bg); color:var(--red); border:1px solid var(--red-border); }
 
 /* ── Metric overrides ─────────────────────────────────────────────────── */
 [data-testid="metric-container"] {
-    background: #161b22;
-    border: 1px solid #30363d;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0.75rem 1rem;
 }
-[data-testid="metric-container"] label { color: #768390 !important; font-size:0.75rem; }
+[data-testid="metric-container"] label { color: var(--text-label) !important; font-size:0.75rem; }
 [data-testid="metric-container"] [data-testid="stMetricValue"] {
-    color: #e6edf3 !important; font-size: 1.5rem; font-weight: 700;
+    color: var(--text) !important; font-size: 1.5rem; font-weight: 700;
 }
 
 /* ── Expanders ────────────────────────────────────────────────────────── */
 [data-testid="stExpander"] {
-    background: #161b22 !important;
-    border: 1px solid #30363d !important;
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border) !important;
     border-radius: 8px !important;
     margin-bottom: 6px;
 }
 [data-testid="stExpander"] summary {
-    color: #cdd9e5 !important;
+    color: var(--text-dim) !important;
     font-size: 0.9rem;
 }
 
@@ -1065,61 +1465,68 @@ h3 { color: #adbac7 !important; }
 [data-testid="stTextInput"] input,
 [data-testid="stNumberInput"] input,
 [data-testid="stSelectbox"] select {
-    background: #0d1117 !important;
-    border: 1px solid #30363d !important;
-    color: #e6edf3 !important;
+    background: var(--bg-input) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
     border-radius: 6px;
 }
 
 /* ── Buttons ──────────────────────────────────────────────────────────── */
 [data-testid="stBaseButton-secondary"] {
-    background: #21262d !important;
-    border: 1px solid #30363d !important;
-    color: #cdd9e5 !important;
+    background: var(--bg-subtle) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-dim) !important;
     border-radius: 6px;
 }
 [data-testid="stBaseButton-secondary"]:hover {
-    background: #30363d !important;
-    border-color: #58a6ff !important;
+    background: var(--bg-hover) !important;
+    border-color: var(--accent) !important;
 }
 [data-testid="stBaseButton-primary"] {
-    background: #1f6feb !important;
-    border: 1px solid #388bfd !important;
+    background: var(--link) !important;
+    border: 1px solid var(--link-border) !important;
     color: #ffffff !important;
     border-radius: 6px;
     font-weight: 600;
 }
 
 /* ── Divider ──────────────────────────────────────────────────────────── */
-hr { border-color: #21262d !important; }
+hr { border-color: var(--border-subtle) !important; }
 
 /* ── Info / warning / success ─────────────────────────────────────────── */
 [data-testid="stAlert"] { border-radius: 8px; }
 
 /* ── Dataframe ────────────────────────────────────────────────────────── */
-[data-testid="stDataFrame"] { border: 1px solid #30363d; border-radius: 8px; }
+[data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: 8px; }
 
 /* ── Caption / small text ─────────────────────────────────────────────── */
-[data-testid="stCaptionContainer"] p { color: #768390 !important; font-size:0.78rem; }
+[data-testid="stCaptionContainer"] p { color: var(--text-label) !important; font-size:0.78rem; }
 
-/* ── Candidate card header ────────────────────────────────────────────── */
+/* ── Candidate card chips ─────────────────────────────────────────────── */
 .cand-arrow {
     display: flex; align-items: center; gap: 0.6rem;
-    font-size: 0.88rem; color: #768390; margin-bottom: 0.4rem;
+    font-size: 0.88rem; color: var(--text-label); margin-bottom: 0.4rem;
 }
 .dist-chip {
-    background: #1c2128; border: 1px solid #30363d;
+    background: var(--bg-subtle); border: 1px solid var(--border);
     border-radius: 6px; padding: 2px 8px;
-    font-family: monospace; font-size: 0.78rem; color: #8b949e;
+    font-family: monospace; font-size: 0.78rem; color: var(--text-muted);
 }
 .dist-chip-good {
-    background: #0d3321; border: 1px solid #238636;
+    background: var(--green-bg); border: 1px solid var(--green-border);
     border-radius: 6px; padding: 2px 8px;
-    font-family: monospace; font-size: 0.78rem; color: #3fb950;
+    font-family: monospace; font-size: 0.78rem; color: var(--green);
 }
 </style>
 """
 
+def build_css(dark: bool) -> str:
+    vars_block = DARK_VARS if dark else LIGHT_VARS
+    # Force vars on :root, html, and body so Streamlit's own theme can't win
+    var_injection = (
+        f"<style>:root, html, body {{ {vars_block} }}</style>"
+    )
+    return var_injection + CSS_STATIC
 def complexity_badge(comp):
     cls = {"C1":"badge-c1","C2":"badge-c2","C3":"badge-c3"}.get(comp,"badge-profile")
     return f'<span class="badge {cls}">{comp}</span>'
@@ -1135,10 +1542,23 @@ def main():
         page_icon="🏭",
         layout="wide",
     )
-    st.markdown(CSS, unsafe_allow_html=True)
+
+    # Theme state — persisted in session
+    if "dark_mode" not in st.session_state:
+        st.session_state["dark_mode"] = True
+    dark = st.session_state["dark_mode"]
+    st.markdown(build_css(dark), unsafe_allow_html=True)
+
+    # Load rules + patch PERFILES BEFORE any widget renders
+    # so all selectboxes see the full dynamic profile list on first render
+    rules = load_rules()
+    df    = load_products()
+    perfiles = get_perfiles(rules, df)
+    global PERFILES
+    PERFILES = perfiles
 
     st.markdown(
-        '<h1 style="border-bottom:1px solid #21262d;padding-bottom:0.5rem;">'
+        '<h1 style="border-bottom:1px solid var(--border-subtle);padding-bottom:0.5rem;">'
         '🏭 Dulox — Revisión de Categorización</h1>',
         unsafe_allow_html=True
     )
@@ -1153,8 +1573,8 @@ def main():
         st.session_state["reviewer"] = reviewer
         if reviewer:
             st.markdown(
-                f'<div style="background:#0d3321;border:1px solid #238636;border-radius:6px;'
-                f'padding:6px 12px;font-size:0.82rem;color:#3fb950;">✅ {reviewer}</div>',
+                f'<div style="background:var(--green-bg);border:1px solid var(--green-border);'
+                f'border-radius:6px;padding:6px 12px;font-size:0.82rem;color:var(--green);">✅ {reviewer}</div>',
                 unsafe_allow_html=True
             )
 
@@ -1165,13 +1585,26 @@ def main():
             "📋 Por Perfil",
             "🔎 Buscar Producto",
             "📊 Dashboard",
+            "➕ Nuevo Perfil",
+            "📥 Inputs (C/X/Procesos/Anclas)",
+            "⚙️ Costos de Proceso",
+            "🎯 Calibración",
+            "🖼️ Analizador de Planos",
+            "➕ Ingreso de Producto",
         ])
+
+        st.divider()
+        # Theme toggle
+        theme_label = "☀️ Modo claro" if dark else "🌙 Modo oscuro"
+        if st.button(theme_label, use_container_width=True):
+            st.session_state["dark_mode"] = not dark
+            st.rerun()
 
         st.divider()
         db_kb = DB.stat().st_size // 1024
         st.markdown(
             f'<div class="dulox-section-label">BASE DE DATOS</div>'
-            f'<div style="font-size:0.82rem;color:#58a6ff;">products.db · {db_kb} KB</div>',
+            f'<div style="font-size:0.82rem;color:var(--accent);">products.db · {db_kb} KB</div>',
             unsafe_allow_html=True
         )
         st.markdown("")
@@ -1179,11 +1612,9 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-    df = load_products()
-
     if page == "🔍 Revisar Candidatos":
         with st.spinner("Calculando candidatos..."):
-            candidates = compute_candidates(df)
+            candidates = compute_candidates(df, rules)
         page_candidates(df, candidates, "reviewer")
 
     elif page == "📋 Por Perfil":
@@ -1194,6 +1625,29 @@ def main():
 
     elif page == "📊 Dashboard":
         page_dashboard(df)
+
+    elif page == "➕ Nuevo Perfil":
+        page_nuevo_perfil(rules)
+
+    elif page == "📥 Inputs (C/X/Procesos/Anclas)":
+        from _pages.data_input import main as data_input_main
+        data_input_main()
+
+    elif page == "⚙️ Costos de Proceso":
+        from _pages.process_costs import main as process_costs_main
+        process_costs_main()
+
+    elif page == "🎯 Calibración":
+        from _pages.calibration import main as calibration_main
+        calibration_main()
+
+    elif page == "🖼️ Analizador de Planos":
+        from _pages.drawing_analyzer import main as drawing_analyzer_main
+        drawing_analyzer_main()
+
+    elif page == "➕ Ingreso de Producto":
+        from _pages.product_intake import main as product_intake_main
+        product_intake_main()
 
 
 if __name__ == "__main__":

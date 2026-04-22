@@ -17,15 +17,52 @@ Run:  streamlit run scripts/review.py
 
 import json
 import math
+import sqlite3
 import streamlit as st
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime
 
 ROOT         = Path(__file__).resolve().parent.parent.parent
 RULES_PATH   = ROOT / "files-process" / "PROCESS_RULES.json"
 CHUNKS_PATH  = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
+DB           = ROOT / "dataset" / "products.db"
+
+
+def _get_conn():
+    conn = sqlite3.connect(DB, timeout=30, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+@st.cache_data(ttl=15)
+def _load_bucket(profile_key: str, complejidad: str) -> pd.DataFrame:
+    """Load all products for a given profile + complexity from DB."""
+    conn = _get_conn()
+    df = pd.read_sql("""
+        SELECT handle, descripcion_web, complejidad,
+               dim_l_mm, dim_w_mm, dim_h_mm, dim_espesor_mm, dim_diameter_mm,
+               G, D, c_value, x_flags, bom_materials, bom_consumables, is_anchor
+        FROM products
+        WHERE perfil_proceso = ? AND complejidad = ?
+        ORDER BY is_anchor DESC, handle
+    """, conn, params=(profile_key, complejidad))
+    conn.close()
+    return df
+
+def _save_bom_to_db(handle: str, mat_df: pd.DataFrame, cons_df: pd.DataFrame):
+    """Persist BOM dataframes as JSON in products.db."""
+    mat_json  = mat_df.to_json(orient="records", force_ascii=False)
+    cons_json = cons_df.to_json(orient="records", force_ascii=False)
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE products SET bom_materials=?, bom_consumables=? WHERE handle=?",
+        (mat_json, cons_json, handle)
+    )
+    conn.commit()
+    conn.close()
+    st.cache_data.clear()
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
 
@@ -709,7 +746,7 @@ def render_cost_analysis(products):
     st.markdown('<div class="sec-label" style="margin-bottom:0.5rem;">CONSUMIBLES POR PROCESO</div>', unsafe_allow_html=True)
 
     def agg_by_process(cons_df):
-        if cons_df.empty or "Proceso" not in cons_df.columns:
+        if not isinstance(cons_df, pd.DataFrame) or cons_df.empty or "Proceso" not in cons_df.columns:
             return {}
         return cons_df.groupby("Proceso")["Total"].sum().to_dict()
 
@@ -736,7 +773,7 @@ def render_cost_analysis(products):
     # ── Material breakdown comparison ─────────────────────────────────────────
     st.markdown('<div class="sec-label" style="margin:1rem 0 0.5rem 0;">MATERIALES POR SUBCONJUNTO</div>', unsafe_allow_html=True)
 
-    if not c2["mat_df"].empty and not c3["mat_df"].empty:
+    if isinstance(c2["mat_df"], pd.DataFrame) and isinstance(c3["mat_df"], pd.DataFrame) and not c2["mat_df"].empty and not c3["mat_df"].empty:
         mat_compare = pd.DataFrame({
             "Subconjunto C2": c2["mat_df"]["Subconjunto"].tolist() if "Subconjunto" in c2["mat_df"].columns else [],
             "Total C2 $":     c2["mat_df"]["total"].tolist()       if "total"       in c2["mat_df"].columns else [],
@@ -1793,6 +1830,248 @@ def render_save_findings(products, rules, profile_key):
             "y ejecuta `python3 scripts/audit_model.py` para ver el ICM actualizado."
         )
 
+# ─── Tab 1 (new): Dynamic BOM per anchor per complexity level ────────────────
+
+def render_bom_entry(rules, profile_key):
+    """
+    Replacement for the hardcoded C2/C3 BAPLA/BARE4 Tab 1.
+    For each complexity level (C1/C2/C3):
+      - Anchor selector (products from DB in that bucket)
+      - BOM editor (pre-populated from DB if saved, else blank)
+      - Save BOM to DB
+    Bottom section: extrapolation table for all products in same bucket.
+    """
+    profile_rules = rules["profiles"].get(profile_key, {})
+    anchors = profile_rules.get("anchors", {})
+
+    st.markdown(
+        '<p style="color:#8b949e;font-size:0.85rem;margin-bottom:1rem;">'
+        'Ingresa el BOM real para el producto ancla de cada nivel. '
+        'El ancla se configura en <b>📊 Datos → Anclas</b>. '
+        'Los costos se guardan en la DB y se extrapolán al resto del bucket.</p>',
+        unsafe_allow_html=True
+    )
+
+    all_products = {}   # for downstream tabs
+
+    for comp in ["C1", "C2", "C3"]:
+        bucket_df = _load_bucket(profile_key, comp)
+        anchor_handle = anchors.get(comp)
+
+        badge_cls = {"C1":"badge-c1","C2":"badge-c2","C3":"badge-c3"}.get(comp,"badge-c1")
+        n_prods = len(bucket_df)
+
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:0.7rem;margin:1.2rem 0 0.4rem 0;">'
+            f'<span class="badge {badge_cls}">{comp}</span>'
+            f'<span style="color:#cdd9e5;font-size:0.95rem;font-weight:600;">'
+            f'{n_prods} productos</span>'
+            f'{"<span style=\"color:#3fb950;font-size:0.78rem;\">⭐ ancla: " + anchor_handle + "</span>" if anchor_handle else "<span style=\"color:#f85149;font-size:0.78rem;\">sin ancla — configúrala en 📊 Datos → Anclas</span>"}'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+        if bucket_df.empty:
+            st.markdown(
+                f'<div style="color:#484f58;font-size:0.82rem;margin-bottom:0.5rem;">'
+                f'Sin productos {comp} en {profile_key}.</div>',
+                unsafe_allow_html=True
+            )
+            continue
+
+        # Anchor selector (override from anchor set in data_input.py)
+        handles = bucket_df["handle"].tolist()
+        default_idx = handles.index(anchor_handle) if anchor_handle in handles else 0
+        selected_anchor = st.selectbox(
+            f"Ancla {comp}",
+            handles,
+            index=default_idx,
+            key=f"anchor_sel_{profile_key}_{comp}",
+            format_func=lambda h: f"{'⭐ ' if h == anchor_handle else ''}{h}",
+        )
+
+        anchor_row = bucket_df[bucket_df["handle"] == selected_anchor].iloc[0]
+        L = float(anchor_row.get("dim_l_mm") or 0)
+        W = float(anchor_row.get("dim_w_mm") or 0)
+        H = float(anchor_row.get("dim_h_mm") or 0)
+        e = float(anchor_row.get("dim_espesor_mm") or 0)
+        G_v = anchor_row.get("G")
+        D_v = anchor_row.get("D")
+
+        # Load saved BOM from DB
+        saved_mat_json  = anchor_row.get("bom_materials",  "[]") or "[]"
+        saved_cons_json = anchor_row.get("bom_consumables","[]") or "[]"
+        saved_mat  = json.loads(saved_mat_json)  if isinstance(saved_mat_json, str)  else []
+        saved_cons = json.loads(saved_cons_json) if isinstance(saved_cons_json, str) else []
+
+        # Default defaults from Python constants (p-basurero-cil only)
+        if not saved_mat and profile_key == "p-basurero-cil" and comp == "C3":
+            saved_mat  = BARE4_MATERIALS_DEFAULT
+            saved_cons = BARE4_CONSUMABLES_DEFAULT
+
+        with st.expander(
+            f"📦 BOM del ancla: {selected_anchor}  ·  G={G_v or '—'} D={D_v or '—'} e={e}mm",
+            expanded=bool(anchor_handle == selected_anchor)
+        ):
+            # Dimension override row
+            d1, d2, d3, d4 = st.columns(4)
+            L = d1.number_input("Largo mm",  value=L, min_value=0.0, key=f"L_{profile_key}_{comp}")
+            W = d2.number_input("Ancho mm",  value=W, min_value=0.0, key=f"W_{profile_key}_{comp}")
+            H = d3.number_input("Alto mm",   value=H, min_value=0.0, key=f"H_{profile_key}_{comp}")
+            e = d4.number_input("Espesor mm",value=e, min_value=0.0, step=0.1, key=f"e_{profile_key}_{comp}", format="%.1f")
+
+            G_new, area = compute_G(L, W, H, rules)
+            D_new = compute_D(e, rules)
+            area_str = f"{area/1e6:.3f} m²" if area else "—"
+            st.markdown(
+                f'<div style="font-size:0.8rem;color:#79c0ff;margin-bottom:0.6rem;">'
+                f'G={G_new or "—"} · D={D_new or "—"} · Área={area_str}</div>',
+                unsafe_allow_html=True
+            )
+
+            # BOM editors
+            mat_df  = bom_editor(
+                "MATERIALES — BOM",
+                saved_mat if saved_mat else [{"Subconjunto":"","Dimensiones":"","Material":"","kg_ml":0.0,"precio_kg":3600,"total":0}],
+                f"mat_{profile_key}_{comp}"
+            )
+            cons_df = bom_editor(
+                "CONSUMIBLES",
+                saved_cons if saved_cons else [{"Producto":"","Proceso":"soldadura","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}],
+                f"cons_{profile_key}_{comp}"
+            )
+
+            mat_total  = int(mat_df["total"].fillna(0).sum())  if "total"  in mat_df.columns else 0
+            cons_total = int(cons_df["Total"].fillna(0).sum()) if "Total"  in cons_df.columns else 0
+            total = mat_total + cons_total
+
+            # Cost summary
+            st.markdown(
+                f'<div style="display:flex;gap:1rem;margin-top:0.5rem;flex-wrap:wrap;">'
+                f'<div class="cal-card" style="flex:1;min-width:110px;text-align:center;">'
+                f'<div class="sec-label">MATERIAL</div>'
+                f'<div class="number-big">{fmt_clp(mat_total)}</div></div>'
+                f'<div class="cal-card" style="flex:1;min-width:110px;text-align:center;">'
+                f'<div class="sec-label">CONSUMIBLES</div>'
+                f'<div class="number-big">{fmt_clp(cons_total)}</div></div>'
+                f'<div class="cal-card" style="flex:1;min-width:110px;text-align:center;">'
+                f'<div class="sec-label">TOTAL DIRECTO</div>'
+                f'<div class="number-big" style="color:#3fb950;">{fmt_clp(total)}</div></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+            # Save BOM
+            if st.button(f"💾 Guardar BOM en DB ({selected_anchor})", key=f"save_bom_{profile_key}_{comp}"):
+                _save_bom_to_db(selected_anchor, mat_df, cons_df)
+                # Also update cost_benchmarks in PROCESS_RULES.json
+                if "cost_benchmarks" not in rules["profiles"][profile_key]:
+                    rules["profiles"][profile_key]["cost_benchmarks"] = {}
+                rules["profiles"][profile_key]["cost_benchmarks"][comp] = {
+                    "anchor_sku": selected_anchor,
+                    "short_name": selected_anchor,
+                    "dims": {"L_mm": L, "W_mm": W, "H_mm": H, "espesor_mm": e},
+                    "material_total_clp": mat_total,
+                    "consumables_total_clp": cons_total,
+                    "calibrated": total > 0,
+                    "calibration_date": str(date.today()),
+                    "notes": f"BOM ingresado {date.today()}",
+                }
+                rules["profiles"][profile_key]["anchors"][comp] = selected_anchor
+                rules["meta"]["last_updated"] = str(date.today())
+                save_rules(rules)
+                st.success(f"✅ BOM guardado — {selected_anchor} ({comp})")
+                st.rerun()
+
+        # Store for downstream tabs
+        all_products[f"{selected_anchor} ({comp})"] = {
+            "G": G_new, "D": D_new, "area": area, "L": L, "W": W, "H": H, "e": e,
+            "c_count": int(anchor_row.get("c_value") or 0),
+            "C": compute_C(int(anchor_row.get("c_value") or 0), rules) if anchor_row.get("c_value") else None,
+            "x_active": {},
+            "mat_df":   mat_df if isinstance(mat_df, pd.DataFrame) else pd.DataFrame(),
+            "cons_df":  cons_df if isinstance(cons_df, pd.DataFrame) else pd.DataFrame(),
+            "mat_total":  int(json.loads(saved_mat_json)[0]["total"] if saved_mat else 0)
+                          if False else  # use live values
+                          int(st.session_state.get(f"mat_{profile_key}_{comp}", pd.DataFrame(
+                              json.loads(saved_mat_json) if saved_mat else []
+                          )).get("total", pd.Series([0])).sum() if not isinstance(
+                              st.session_state.get(f"mat_{profile_key}_{comp}"), type(None)) else
+                          sum(r.get("total",0) for r in (saved_mat or []))),
+            "cons_total": sum(r.get("Total",0) for r in (saved_cons or [])),
+            "total": sum(r.get("total",0) for r in (saved_mat or [])) + sum(r.get("Total",0) for r in (saved_cons or [])),
+            "expected_comp": comp,
+        }
+
+    st.divider()
+
+    # ── Extrapolation table — all products in profile, grouped by level ──────
+    st.markdown('<div class="sec-label" style="margin-bottom:0.5rem;">EXTRAPOLACIÓN — TODOS LOS PRODUCTOS DEL PERFIL</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<p style="color:#8b949e;font-size:0.8rem;">Costo estimado para cada producto usando '
+        'factor_escala = área_producto / área_ancla. '
+        'Requiere BOM del ancla guardado.</p>',
+        unsafe_allow_html=True
+    )
+
+    extrap_rows = []
+    for comp in ["C1", "C2", "C3"]:
+        bucket_df = _load_bucket(profile_key, comp)
+        if bucket_df.empty:
+            continue
+        anchor_handle = (rules["profiles"].get(profile_key, {}).get("anchors") or {}).get(comp)
+        bench = (rules["profiles"].get(profile_key, {}).get("cost_benchmarks") or {}).get(comp, {})
+        anchor_mat  = bench.get("material_total_clp")
+        anchor_cons = bench.get("consumables_total_clp")
+        anchor_dims = bench.get("dims", {})
+        aL = anchor_dims.get("L_mm", 0) or 0
+        aW = anchor_dims.get("W_mm", 0) or 0
+        aH = anchor_dims.get("H_mm", 0) or 0
+        anchor_area = 2*(aL+aW)*aH + aL*aW if aL and aW else None
+
+        for _, row in bucket_df.iterrows():
+            L = row.get("dim_l_mm") or 0
+            W = row.get("dim_w_mm") or 0
+            H = row.get("dim_h_mm") or 0
+            area = 2*(L+W)*H + L*W if L and W else None
+            factor = round(area / anchor_area, 3) if (area and anchor_area) else None
+            mat_est  = round(anchor_mat  * factor) if (anchor_mat  and factor) else None
+            cons_est = round(anchor_cons * factor) if (anchor_cons and factor) else None
+            total_est = (mat_est or 0) + (cons_est or 0)
+
+            extrap_rows.append({
+                "Nivel":   comp,
+                "Handle":  row["handle"],
+                "⭐ Ancla": "⭐" if row["handle"] == anchor_handle else "",
+                "G": row.get("G"),
+                "D": row.get("D"),
+                "Área m²": f"{area/1e6:.3f}" if area else "—",
+                "factor_escala": factor,
+                "Mat. est.": mat_est,
+                "Cons. est.": cons_est,
+                "Total est. $": total_est if total_est > 0 else None,
+                "BOM real": "✅" if (row.get("bom_materials","[]") not in [None,"[]","[{}]",""] ) else "—",
+            })
+
+    if extrap_rows:
+        ex_df = pd.DataFrame(extrap_rows)
+        st.dataframe(
+            ex_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Mat. est.":    st.column_config.NumberColumn("Mat. est. $", format="$ %d"),
+                "Cons. est.":   st.column_config.NumberColumn("Cons. est. $", format="$ %d"),
+                "Total est. $": st.column_config.NumberColumn("Total est. $", format="$ %d"),
+                "factor_escala":st.column_config.NumberColumn("f_escala", format="%.3f"),
+            }
+        )
+    else:
+        st.info("Sin productos en DB para este perfil. Importa el CSV primero.")
+
+    return all_products
+
+
 # ─── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1854,47 +2133,14 @@ def main():
     ]
 
     with tab1:
-        st.markdown(
-            '<p style="color:#8b949e;font-size:0.85rem;margin-bottom:1rem;">'
-            'Ingresa el BOM real de cada producto. '
-            'El C3 (BARE4-01300) está pre-cargado desde measurements-p1.md. '
-            'Agrega o edita cualquier fila directamente en la tabla.</p>',
-            unsafe_allow_html=True
-        )
-        col_c2, col_c3 = st.columns(2)
-
-        with col_c2:
-            c2_sku  = c2_bench.get("short_name", "C2 (ancla)")
-            c2_data = product_section(
-                "Ancla C2", c2_sku, "C2",
-                c2_dims_def,
-                f"mat_{profile_key}_c2", f"cons_{profile_key}_c2",
-                BAPLA_MATERIALS_DEFAULT, BAPLA_CONSUMABLES_DEFAULT,
-                rules, profile_key
-            )
-            c2_data["expected_comp"] = "C2"
-
-        with col_c3:
-            c3_sku = c3_bench.get("short_name", "C3")
-            c3_data = product_section(
-                "Producto C3", c3_sku, "C3",
-                c3_dims_def,
-                f"mat_{profile_key}_c3", f"cons_{profile_key}_c3",
-                BARE4_MATERIALS_DEFAULT, BARE4_CONSUMABLES_DEFAULT,
-                rules, profile_key
-            )
-            c3_data["expected_comp"] = "C3"
-
-        st.session_state[f"products_{profile_key}"] = {
-            c2_sku: c2_data,
-            c3_sku: c3_data,
-        }
+        all_products_from_tab1 = render_bom_entry(rules, profile_key)
+        st.session_state[f"products_{profile_key}"] = all_products_from_tab1
 
     products = st.session_state.get(f"products_{profile_key}", {})
     # Re-attach expected_comp if loaded from state
     for name, p in products.items():
         if "expected_comp" not in p:
-            p["expected_comp"] = "C2" if "bapla" in name.lower() or "plaza" in name.lower() else "C3"
+            p["expected_comp"] = "C2" if "c2" in name.lower() else ("C3" if "c3" in name.lower() else "C1")
 
     with tab2:
         render_point_system(products, rules, profile_key)

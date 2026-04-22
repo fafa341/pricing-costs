@@ -1,7 +1,7 @@
 {
   "meta": {
     "version": "1.0",
-    "last_updated": "2026-04-18",
+    "last_updated": "2026-04-21",
     "calibrated_by": null,
     "description": "Reglas determinísticas del sistema de drivers G/D/C/X. Fuente única de verdad para audit_model.py, review.py, calibration.py y todos los agentes."
   },
@@ -172,6 +172,28 @@
           "consumables": null,
           "notes": "Pendiente calibración C2 (BAPLA-0470)"
         }
+      },
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "cilindrado",
+          "armado_trazado",
+          "soldadura",
+          "pulido"
+        ],
+        "C3": [
+          "laser",
+          "cilindrado",
+          "armado_trazado",
+          "soldadura",
+          "pulido"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": "basurero-de-reciclaje-4-compartimientos-nuevo-modelo-baren-01300"
       }
     },
     "p-basurero-rect": {
@@ -224,7 +246,29 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "pulido"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "pulido"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-meson": {
       "description": "Mesones de trabajo en acero inoxidable",
@@ -262,7 +306,29 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "pulido"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "pulido"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-laminar-simple": {
       "description": "Piezas laminares simples: cubrejuntas, tapas, repisas",
@@ -292,7 +358,23 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "plegado"
+        ],
+        "C3": [
+          "laser",
+          "plegado"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-cilindrico": {
       "description": "Piezas cilíndricas: poruñas, baldes, recipientes",
@@ -323,7 +405,27 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "cilindrado",
+          "soldadura",
+          "pulido"
+        ],
+        "C3": [
+          "laser",
+          "cilindrado",
+          "soldadura",
+          "pulido"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-campana": {
       "description": "Campanas extractoras murales y centrales",
@@ -354,7 +456,29 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "pulido"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "pulido"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-carro-bandejero": {
       "description": "Carros para transporte de bandejas y materiales",
@@ -390,7 +514,25 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "soldadura"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "soldadura"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-cocina-gas": {
       "description": "Cocinas industriales a gas",
@@ -426,7 +568,25 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "soldadura"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "soldadura"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-lavadero": {
       "description": "Lavaderos y lavamanos industriales",
@@ -458,7 +618,27 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-electrico": {
       "description": "Equipos con resistencias eléctricas (baños maría, sartenes)",
@@ -495,7 +675,29 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "electrico"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "electrico"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-sumidero": {
       "description": "Sumideros de piso",
@@ -526,7 +728,25 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "soldadura"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "soldadura"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-modulo": {
       "description": "Módulos de equipamiento: exhibidores, muebles de servicio",
@@ -557,7 +777,27 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-tina": {
       "description": "Tinas y prensas queseras",
@@ -590,7 +830,27 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-laser": {
       "description": "Piezas con trabajo láser decorativo o funcional",
@@ -614,7 +874,21 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser"
+        ],
+        "C3": [
+          "laser"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-rejilla": {
       "description": "Rejillas y celosías de varillas soldadas",
@@ -643,7 +917,23 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "armado_trazado",
+          "soldadura"
+        ],
+        "C3": [
+          "armado_trazado",
+          "soldadura"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-carro-traslado": {
       "description": "Carros de traslado y transporte general",
@@ -679,7 +969,25 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "soldadura"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "soldadura"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     },
     "p-custom": {
       "description": "Productos a medida sin perfil estándar",
@@ -718,7 +1026,129 @@
         }
       },
       "cost_benchmarks": {},
-      "expected_cost_ratios": {}
+      "expected_cost_ratios": {},
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "pulido"
+        ],
+        "C3": [
+          "laser",
+          "armado_trazado",
+          "plegado",
+          "soldadura",
+          "pulido"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
+    },
+    "p-bicicleteros-cil": {
+      "description": "bicicleteros y barandas con cilindrado. El proceso de cilindrado usualmente se hace afuera",
+      "primary_drivers": [
+        "G"
+      ],
+      "secondary_drivers": [
+        "X"
+      ],
+      "c_driver": null,
+      "g_is_primary": true,
+      "processes": [
+        "armado_trazado",
+        "soldadura",
+        "pulido",
+        "cilindrado",
+        "qc",
+        "corte_manual"
+      ],
+      "x_flags": {},
+      "complexity_thresholds": {
+        "C1": {
+          "min_points": 1,
+          "max_points": 2,
+          "description": "Simple, sin mecanismo"
+        },
+        "C2": {
+          "min_points": 3,
+          "max_points": 5,
+          "description": "Estándar, algún mecanismo o característica, cilindrado afuera "
+        },
+        "C3": {
+          "min_points": 6,
+          "max_points": 99,
+          "description": "Alta complejidad, acabado especial o múltiples componentes"
+        }
+      },
+      "cost_benchmarks": {
+        "C2": {
+          "anchor_sku": null,
+          "short_name": null,
+          "dims": {
+            "L_mm": null,
+            "W_mm": null,
+            "H_mm": null,
+            "espesor_mm": null
+          },
+          "material_total_clp": null,
+          "consumables_total_clp": null,
+          "calibrated": false,
+          "calibration_date": null,
+          "notes": "Pendiente: ingresar BOM en calibration.py"
+        },
+        "C3": {
+          "anchor_sku": null,
+          "short_name": null,
+          "dims": {
+            "L_mm": null,
+            "W_mm": null,
+            "H_mm": null,
+            "espesor_mm": null
+          },
+          "material_total_clp": null,
+          "consumables_total_clp": null,
+          "calibrated": false,
+          "calibration_date": null,
+          "notes": "Pendiente: ingresar BOM en calibration.py"
+        }
+      },
+      "expected_cost_ratios": {
+        "C2_to_C3": {
+          "material": null,
+          "consumables": null,
+          "notes": "Pendiente calibración"
+        }
+      },
+      "process_tiers": {
+        "C1": [],
+        "C2": [
+          "armado_trazado",
+          "soldadura",
+          "pulido",
+          "cilindrado",
+          "qc",
+          "corte_manual"
+        ],
+        "C3": [
+          "armado_trazado",
+          "soldadura",
+          "pulido",
+          "cilindrado",
+          "qc",
+          "corte_manual"
+        ]
+      },
+      "anchors": {
+        "C1": null,
+        "C2": null,
+        "C3": null
+      }
     }
   },
   "process_templates": {
@@ -926,7 +1356,8 @@
     "soldadura": {
       "drivers": [
         "C",
-        "X"
+        "X",
+        "G"
       ],
       "score_thresholds": {
         "C1": [
@@ -935,10 +1366,10 @@
         ],
         "C2": [
           2,
-          3
+          4
         ],
         "C3": [
-          4,
+          5,
           99
         ]
       },
@@ -949,7 +1380,7 @@
       },
       "C1": {
         "T_setup_min": 5,
-        "T_exec_min": 40,
+        "T_exec_min": 30,
         "n_ops": 1
       },
       "C2": {
@@ -959,8 +1390,8 @@
       },
       "C3": {
         "T_setup_min": 30,
-        "T_exec_min": 90,
-        "n_ops": 1
+        "T_exec_min": 120,
+        "n_ops": 2
       }
     },
     "pulido": {
@@ -975,7 +1406,7 @@
         ],
         "C2": [
           3,
-          5
+          6
         ],
         "C3": [
           7,
@@ -988,19 +1419,19 @@
         "C3": "3 pasadas completas, acabado espejo, geometría compleja"
       },
       "C1": {
-        "T_setup_min": 0,
+        "T_setup_min": 15,
         "T_exec_min": 60,
         "n_ops": 1
       },
       "C2": {
-        "T_setup_min": 0,
+        "T_setup_min": 15,
         "T_exec_min": 90,
         "n_ops": 2
       },
       "C3": {
-        "T_setup_min": 0,
+        "T_setup_min": 15,
         "T_exec_min": 300,
-        "n_ops": 3
+        "n_ops": 4
       }
     },
     "qc": {
@@ -1042,6 +1473,273 @@
         "T_exec_min": 60,
         "n_ops": 1
       }
+    },
+    "grabado_laser": {
+      "drivers": [
+        "G"
+      ],
+      "score_thresholds": {
+        "C1": [
+          1,
+          1
+        ],
+        "C2": [
+          2,
+          2
+        ],
+        "C3": [
+          3,
+          99
+        ]
+      },
+      "descriptions": {
+        "C1": "Grabado simple, 1 elemento",
+        "C2": "Grabado múltiple o decorativo",
+        "C3": "Grabado especial — cotizar"
+      },
+      "C1": {
+        "T_setup_min": 10,
+        "T_exec_min": 15,
+        "n_ops": 1
+      },
+      "C2": {
+        "T_setup_min": 20,
+        "T_exec_min": 30,
+        "n_ops": 1
+      },
+      "C3": {
+        "T_setup_min": 30,
+        "T_exec_min": 0,
+        "n_ops": 0
+      }
+    },
+    "pintura": {
+      "drivers": [
+        "X"
+      ],
+      "score_thresholds": {
+        "C1": [
+          0,
+          1
+        ],
+        "C2": [
+          2,
+          2
+        ],
+        "C3": [
+          3,
+          99
+        ]
+      },
+      "descriptions": {
+        "C1": "Sin pintura o básico",
+        "C2": "Pintura estándar",
+        "C3": "Pintura especial multicapa"
+      },
+      "C1": {
+        "T_setup_min": 0,
+        "T_exec_min": 0,
+        "n_ops": 0
+      },
+      "C2": {
+        "T_setup_min": 15,
+        "T_exec_min": 60,
+        "n_ops": 1
+      },
+      "C3": {
+        "T_setup_min": 30,
+        "T_exec_min": 120,
+        "n_ops": 2
+      }
+    },
+    "refrigeracion": {
+      "drivers": [
+        "C",
+        "D"
+      ],
+      "score_thresholds": {
+        "C1": [
+          2,
+          3
+        ],
+        "C2": [
+          4,
+          4
+        ],
+        "C3": [
+          5,
+          99
+        ]
+      },
+      "descriptions": {
+        "C1": "Sistema simple, 1 circuito",
+        "C2": "2 circuitos o evaporadores",
+        "C3": "Sistema complejo industrial"
+      },
+      "C1": {
+        "T_setup_min": 30,
+        "T_exec_min": 120,
+        "n_ops": 2
+      },
+      "C2": {
+        "T_setup_min": 60,
+        "T_exec_min": 240,
+        "n_ops": 2
+      },
+      "C3": {
+        "T_setup_min": 120,
+        "T_exec_min": 480,
+        "n_ops": 3
+      }
     }
+  },
+  "process_consumables": {
+    "pulido": {
+      "C1": [
+        {
+          "Producto": "Disco Lija Grano 80",
+          "Unidad": "u",
+          "Cantidad": 1.0,
+          "Precio_u": 2500,
+          "Total": 2500
+        },
+        {
+          "Producto": "Grata Roja",
+          "Unidad": "u",
+          "Cantidad": 1.0,
+          "Precio_u": 5800,
+          "Total": 5800
+        },
+        {
+          "Producto": "Traslapo 7''",
+          "Unidad": "u",
+          "Cantidad": 1.5,
+          "Precio_u": 290,
+          "Total": 435
+        },
+        {
+          "Producto": "Pliego de liga grano 80",
+          "Unidad": "u",
+          "Cantidad": 0.5,
+          "Precio_u": 592,
+          "Total": 296
+        }
+      ],
+      "C2": [
+        {
+          "Producto": "Disco Lija Grano 80",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 2500,
+          "Total": 2500
+        },
+        {
+          "Producto": "Grata Roja",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 5800,
+          "Total": 5800
+        },
+        {
+          "Producto": "Traslapo 7''",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 290,
+          "Total": 290
+        },
+        {
+          "Producto": "Pliego de liga grano 80",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 592,
+          "Total": 592
+        },
+        {
+          "Producto": "Pasta de pulir",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 3500,
+          "Total": 3500
+        }
+      ],
+      "C3": [
+        {
+          "Producto": "Disco Desbaste 4.5\"",
+          "Unidad": "u",
+          "Cantidad": 2,
+          "Precio_u": 2500,
+          "Total": 5000
+        },
+        {
+          "Producto": "Disco Lija Grano 80",
+          "Unidad": "u",
+          "Cantidad": 2,
+          "Precio_u": 460,
+          "Total": 920
+        },
+        {
+          "Producto": "Grata Roja",
+          "Unidad": "u",
+          "Cantidad": 2,
+          "Precio_u": 5800,
+          "Total": 11600
+        },
+        {
+          "Producto": "Disco Traslapado",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 1681,
+          "Total": 1681
+        },
+        {
+          "Producto": "Disco Multifinic",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 2500,
+          "Total": 2500
+        },
+        {
+          "Producto": "Traslapos pequeños 50x30",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 1100,
+          "Total": 1100
+        },
+        {
+          "Producto": "Pasta de pulir",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 3500,
+          "Total": 3500
+        },
+        {
+          "Producto": "Spray limpiador inox",
+          "Unidad": "u",
+          "Cantidad": 0,
+          "Precio_u": 8072,
+          "Total": 0
+        },
+        {
+          "Producto": "Huaipe",
+          "Unidad": "u",
+          "Cantidad": 1,
+          "Precio_u": 3500,
+          "Total": 3500
+        }
+      ]
+    }
+  },
+  "hh_rates": {
+    "armado_trazado": 6500,
+    "cilindrado": 7500,
+    "corte_manual": 6500,
+    "grabado_laser": 8000,
+    "laser": 6500,
+    "pintura": 6000,
+    "plegado": 7000,
+    "pulido": 7500,
+    "qc": 6000,
+    "refrigeracion": 8500,
+    "soldadura": 9000
   }
 }
