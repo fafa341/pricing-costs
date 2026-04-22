@@ -389,20 +389,15 @@ def bom_editor(label, default_rows, key):
         use_container_width=True,
         num_rows="dynamic",
         column_config={
-            "total":     st.column_config.NumberColumn("Total $",     format="%.0f", disabled=True),
+            "total":     st.column_config.NumberColumn("Total $",     format="%.0f", step=1, min_value=0),
             "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="%.0f", step=1),
-            "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f",   step=0.0001),
-            "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f",   step=0.001),
+            "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f", step=0.0001),
+            "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f", step=0.001),
             "Precio_u":  st.column_config.NumberColumn("Precio u.",   format="%.0f", step=1),
-            "Total":     st.column_config.NumberColumn("Total cons.",  format="%.0f", disabled=True),
+            "Total":     st.column_config.NumberColumn("Total $",      format="%.0f", step=1, min_value=0),
         },
         hide_index=True,
     )
-    # Compute material total = Cantidad × kg_ml × precio_kg
-    if isinstance(edited, pd.DataFrame) and not edited.empty and "kg_ml" in edited.columns:
-        _qty = edited.get("Cantidad", pd.Series([1.0]*len(edited))).fillna(1.0)
-        edited = edited.copy()
-        edited["total"] = (_qty * edited["kg_ml"].fillna(0) * edited["precio_kg"].fillna(0)).round().astype(int)
     st.session_state[key] = edited
     return edited
 
@@ -2196,10 +2191,10 @@ def render_bom_entry(rules, profile_key):
                     st.session_state[_mat_skey],
                     use_container_width=True, num_rows="dynamic", hide_index=True,
                     column_config={
-                        "total":     st.column_config.NumberColumn("Total $",     format="%.0f", disabled=True),
+                        "total":     st.column_config.NumberColumn("Total $",     format="%.0f", step=1, min_value=0),
                         "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="%.0f", step=1),
-                        "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f",   step=0.0001),
-                        "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f",   step=0.001),
+                        "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f", step=0.0001),
+                        "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f", step=0.001),
                     },
                 )
                 st.markdown('<div class="sec-label" style="margin-top:0.6rem;">CONSUMIBLES</div>', unsafe_allow_html=True)
@@ -2208,8 +2203,8 @@ def render_bom_entry(rules, profile_key):
                     use_container_width=True, num_rows="dynamic", hide_index=True,
                     column_config={
                         "Precio_u": st.column_config.NumberColumn("Precio u.", format="%.0f", step=1),
-                        "Total":    st.column_config.NumberColumn("Total cons.", format="%.0f", disabled=True),
-                        "Cantidad": st.column_config.NumberColumn("Cant.",      format="%.3f",   step=0.001),
+                        "Total":    st.column_config.NumberColumn("Total $",   format="%.0f", step=1, min_value=0),
+                        "Cantidad": st.column_config.NumberColumn("Cant.",     format="%.3f", step=0.001),
                     },
                 )
                 save_clicked = st.form_submit_button(
@@ -2219,14 +2214,7 @@ def render_bom_entry(rules, profile_key):
 
             # Process form submission outside the form context
             if save_clicked:
-                # Compute totals with Cantidad
-                if isinstance(mat_df, pd.DataFrame) and not mat_df.empty and "kg_ml" in mat_df.columns:
-                    _qty = mat_df.get("Cantidad", pd.Series([1.0]*len(mat_df))).fillna(1.0)
-                    mat_df = mat_df.copy()
-                    mat_df["total"] = (_qty * mat_df["kg_ml"].fillna(0) * mat_df["precio_kg"].fillna(0)).round().astype(int)
-                if isinstance(cons_df, pd.DataFrame) and not cons_df.empty and "Cantidad" in cons_df.columns:
-                    cons_df = cons_df.copy()
-                    cons_df["Total"] = (cons_df["Cantidad"].fillna(0) * cons_df["Precio_u"].fillna(0)).round().astype(int)
+                # Use user-entered totals directly — do not auto-compute over them
                 mat_total  = int(mat_df["total"].fillna(0).sum())  if isinstance(mat_df, pd.DataFrame) and "total"  in mat_df.columns else 0
                 cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total"  in cons_df.columns else 0
                 total      = mat_total + cons_total
