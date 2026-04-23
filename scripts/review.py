@@ -1530,6 +1530,13 @@ def main():
     )
 
     with st.sidebar:
+        reviewer = st.text_input(
+            "Tu nombre", value=st.session_state.get("reviewer", ""),
+            placeholder="ej: Fabio", key="reviewer_name",
+        )
+        st.session_state["reviewer"] = reviewer
+
+        st.divider()
         st.markdown("### 🗂️ Navegación")
         page = st.radio("", key="nav_page", options=[
             "🔍 Revisar Candidatos",
