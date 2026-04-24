@@ -1301,17 +1301,18 @@ def render_extrapolation(anchor_product, anchor_name, anchor_comp, rules, profil
     # New product input
     st.markdown('<div class="sec-label" style="margin-top:1rem;">PRODUCTO A EXTRAPOLAR</div>', unsafe_allow_html=True)
     ec1, ec2, ec3, ec4 = st.columns(4)
-    nL = ec1.number_input("Largo mm",    value=anchor_product["L"],  key="ext_L", min_value=0)
-    nW = ec2.number_input("Ancho mm",    value=anchor_product["W"],  key="ext_W", min_value=0)
-    nH = ec3.number_input("Alto mm",     value=anchor_product["H"],  key="ext_H", min_value=0)
-    ne = ec4.number_input("Espesor mm",  value=anchor_product["e"],  key="ext_e", min_value=0.0, step=0.1)
+    _ek = f"ext_{anchor_comp}"
+    nL = ec1.number_input("Largo mm",    value=float(anchor_product["L"] or 0),  key=f"{_ek}_L", min_value=0.0)
+    nW = ec2.number_input("Ancho mm",    value=float(anchor_product["W"] or 0),  key=f"{_ek}_W", min_value=0.0)
+    nH = ec3.number_input("Alto mm",     value=float(anchor_product["H"] or 0),  key=f"{_ek}_H", min_value=0.0)
+    ne = ec4.number_input("Espesor mm",  value=float(anchor_product["e"] or 0),  key=f"{_ek}_e", min_value=0.0, step=0.1)
 
     # X flags for new product
     new_x_active = {}
     if x_defs:
         st.markdown('<div class="sec-label">CARACTERÍSTICAS X (nuevo producto)</div>', unsafe_allow_html=True)
         for flag, meta in x_defs.items():
-            checked = st.checkbox(meta["label"], key=f"ext_x_{flag}", help=meta.get("description",""))
+            checked = st.checkbox(meta["label"], key=f"ext_{anchor_comp}_x_{flag}", help=meta.get("description",""))
             new_x_active[flag] = checked
 
     nG, nArea = compute_G(nL, nW, nH, rules)
@@ -2132,7 +2133,7 @@ def _parse_measurements_p2() -> list[dict]:
 
         # consumables
         cons_rows: list = []
-        cm = re.search(r"## Consumables.*?\n(.*?)(?=---|\Z)", section, re.DOTALL)
+        cm = re.search(r"## Consumables.*?\n(.*?)(?=\n---|\Z)", section, re.DOTALL)
         if cm:
             for line in cm.group(1).splitlines():
                 if not line.startswith("|") or "---" in line or "Producto" in line:
