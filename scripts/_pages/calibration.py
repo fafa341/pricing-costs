@@ -17,6 +17,7 @@ Run:  streamlit run scripts/review.py
 
 import json
 import math
+import re
 import sys
 import streamlit as st
 import pandas as pd
@@ -24,10 +25,14 @@ import numpy as np
 from pathlib import Path
 from datetime import date, datetime
 
-ROOT         = Path(__file__).resolve().parent.parent.parent
-CHUNKS_PATH  = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
+ROOT               = Path(__file__).resolve().parent.parent.parent
+CHUNKS_PATH        = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
+MEASUREMENTS_PATH  = ROOT / "files-process" / "process-measurements" / "measurements-p2.md"
 sys.path.insert(0, str(ROOT / "scripts"))
-from db import load_rules, save_rules, get_sb, load_profile_products as _load_profile_raw, save_bom as _save_bom_db
+from db import (load_rules, save_rules, get_sb,
+                load_profile_products as _load_profile_raw,
+                save_bom as _save_bom_db,
+                save_product_batch)
 
 
 def _load_chunks() -> list[dict]:
@@ -2068,6 +2073,343 @@ def render_save_findings(products, rules, profile_key):
         with st.expander("Ver chunk generado", expanded=False):
             st.code(json.dumps(chunk, indent=2, ensure_ascii=False), language="json")
 
+# ─── Measurements-p2.md parser ───────────────────────────────────────────────
+
+def _parse_measurements_p2() -> list[dict]:
+    """Parse measurements-p2.md → list of {handle, name, dims, mat_rows, cons_rows}."""
+    if not MEASUREMENTS_PATH.exists():
+        return []
+    text = MEASUREMENTS_PATH.read_text(encoding="utf-8")
+
+    def _price(s: str) -> float:
+        if not s:
+            return 0.0
+        try:
+            return float(re.sub(r"[$,\s]", "", s.strip()))
+        except ValueError:
+            return 0.0
+
+    results = []
+    for section in re.split(r"\n(?=# )", text):
+        header = re.match(r"# ([A-Z0-9\-]+)\s*(?:\|([^\n]*))?", section)
+        if not header:
+            continue
+        handle_raw = header.group(1).strip()
+        handle     = handle_raw.lower()
+        name       = (header.group(2) or "").strip()
+
+        # dimensions
+        dims: dict = {}
+        dm = re.search(r"## Dimensions\s*\n[^\n]*\n([^\n]*)", section)
+        if dm:
+            for label, val in zip(["L_mm","W_mm","H_mm"], dm.group(1).split(",")[:3]):
+                try:
+                    v = float(re.sub(r"[^0-9.]", "", val.strip()))
+                    if v: dims[label] = v
+                except ValueError:
+                    pass
+
+        # materials
+        mat_rows: list = []
+        mm = re.search(r"## Material cost breakdown\s*\n(.*?)(?=##|\Z)", section, re.DOTALL)
+        if mm:
+            for line in mm.group(1).splitlines():
+                if not line.startswith("|") or "---" in line or "Material" in line:
+                    continue
+                cells = [c.strip() for c in line.split("|")[1:-1]]
+                if len(cells) < 7 or not cells[0] or cells[0].startswith("---"):
+                    continue
+                kg_ml = _price(cells[4])
+                total = _price(cells[6])
+                if not total and not kg_ml:
+                    continue
+                mat_rows.append({
+                    "Subconjunto": "", "Dimensiones": cells[1],
+                    "Material": cells[0], "Cantidad": 1.0,
+                    "kg_ml": kg_ml, "precio_kg": _price(cells[2]),
+                    "total": int(total),
+                })
+
+        # consumables
+        cons_rows: list = []
+        cm = re.search(r"## Consumables.*?\n(.*?)(?=---|\Z)", section, re.DOTALL)
+        if cm:
+            for line in cm.group(1).splitlines():
+                if not line.startswith("|") or "---" in line or "Producto" in line:
+                    continue
+                cells = [c.strip() for c in line.split("|")[1:-1]]
+                if len(cells) < 7 or not cells[0] or not cells[1]:
+                    continue
+                try:
+                    cant = float(cells[2].replace(",", "."))
+                except ValueError:
+                    cant = 0.0
+                total_c = _price(cells[6])
+                cons_rows.append({
+                    "Producto": cells[0], "Proceso": cells[1],
+                    "Cantidad": cant, "Unidad": cells[3],
+                    "Precio_u": int(_price(cells[4])), "Total": int(total_c),
+                })
+
+        if mat_rows or cons_rows:
+            results.append({
+                "handle": handle, "handle_raw": handle_raw, "name": name,
+                "dims": dims, "mat_rows": mat_rows, "cons_rows": cons_rows,
+                "mat_total":  sum(r["total"] for r in mat_rows),
+                "cons_total": sum(r["Total"] for r in cons_rows),
+            })
+    return results
+
+
+def render_measurements_import():
+    """Expander UI: preview measurements-p2.md parse and import to DB."""
+    with st.expander("📥 Importar BOMs desde measurements-p2.md", expanded=False):
+        parsed = _parse_measurements_p2()
+        if not parsed:
+            st.warning("measurements-p2.md no encontrado o sin datos parseables.")
+            return
+
+        # Match against DB
+        try:
+            db_rows = get_sb().table("products").select("handle,bom_materials").execute().data
+            db_map  = {r["handle"]: r for r in db_rows}
+        except Exception:
+            db_map = {}
+
+        preview = []
+        for p in parsed:
+            matched   = p["handle"] in db_map
+            has_bom   = matched and (db_map[p["handle"]].get("bom_materials") or "[]") not in ["[]", "", None]
+            preview.append({
+                "Handle": p["handle_raw"],
+                "DB match": "✅" if matched else "❌ no match",
+                "BOM ya guardado": "✅" if has_bom else "—",
+                "Mat. filas": len(p["mat_rows"]),
+                "Cons. filas": len(p["cons_rows"]),
+                "Total mat $": p["mat_total"],
+                "Nombre": p["name"][:45],
+                "_handle": p["handle"],
+            })
+
+        matched_n = sum(1 for r in preview if "✅" in r["DB match"])
+        st.markdown(f"**{matched_n}/{len(preview)} handles coinciden con la DB.**")
+        st.dataframe(
+            pd.DataFrame([{k: v for k, v in r.items() if not k.startswith("_")} for r in preview]),
+            use_container_width=True, hide_index=True,
+            column_config={"Total mat $": st.column_config.NumberColumn(format="$ %.0f")},
+        )
+
+        col_all, col_new = st.columns(2)
+        import_all = col_all.button("💾 Importar todos (sobrescribe)", key="imp_all_btn")
+        import_new = col_new.button("💾 Importar solo los sin BOM", key="imp_new_btn")
+
+        if import_all or import_new:
+            count = 0
+            for p in parsed:
+                if p["handle"] not in db_map:
+                    continue
+                if import_new:
+                    existing = (db_map[p["handle"]].get("bom_materials") or "[]")
+                    if existing not in ["[]", "", None]:
+                        continue
+                _save_bom_db(p["handle"], p["mat_rows"], p["cons_rows"])
+                count += 1
+            _load_profile.clear()
+            _load_bucket.clear()
+            st.success(f"✅ {count} BOMs importados.")
+            st.rerun()
+
+
+# ─── Tab: Categorización & X Flags ───────────────────────────────────────────
+
+def render_categorization(rules: dict, profile_key: str):
+    """
+    All products in profile — live G/D/C/X scoring + inline X flag tuning.
+    Independent of Tab 1 (reads directly from DB).
+    """
+    profile_rules  = rules["profiles"].get(profile_key, {})
+    x_defs         = profile_rules.get("x_flags", {})
+    thresholds     = profile_rules.get("complexity_thresholds", {})
+    c_driver_field = profile_rules.get("c_driver")
+    primary        = profile_rules.get("primary_drivers", [])
+
+    df = _load_profile(profile_key)
+    if df.empty:
+        st.info("No hay productos para este perfil.")
+        return
+
+    # Parse x_flags JSON column → list
+    def _parse_xflags(raw):
+        if isinstance(raw, list):
+            return raw
+        try:
+            v = json.loads(raw or "[]")
+            return v if isinstance(v, list) else []
+        except Exception:
+            return []
+
+    df = df.copy()
+    df["x_flags_parsed"] = df["x_flags"].apply(_parse_xflags) if "x_flags" in df.columns else [[] for _ in range(len(df))]
+
+    # ── Compact threshold reference ───────────────────────────────────────────
+    g_bp = rules["driver_thresholds"]["G"]["breakpoints_mm2"]
+    d_bp = rules["driver_thresholds"]["D"]["breakpoints_mm"]
+    c_bp = rules["driver_thresholds"].get("C", {}).get("breakpoints", [3, 7])
+    ct   = profile_rules.get("complexity_thresholds", {})
+    thresh_parts = " · ".join(
+        f'<b style="color:#79c0ff;">{comp}</b> '
+        f'<span style="color:#8b949e;">{ct[comp]["min_points"]}–{ct[comp].get("max_points","∞")}pts</span>'
+        for comp in ["C1","C2","C3"] if comp in ct
+    )
+    x_parts = " · ".join(
+        f'<b style="color:#da8bff;">{x_defs[f]["label"]}</b> +{x_defs[f]["points"]}pts'
+        for f in x_defs
+    ) or "Sin flags X"
+
+    st.markdown(
+        f'<div class="cal-card" style="margin-bottom:0.8rem;">'
+        f'<div style="display:flex;gap:2rem;flex-wrap:wrap;font-size:0.81rem;">'
+        f'<div><span class="sec-label">G</span> '
+        f'1:&lt;{g_bp[0]//1000}k · 2:{g_bp[0]//1000}k–{g_bp[1]//1000}k · 3:&gt;{g_bp[1]//1000}k mm²</div>'
+        f'<div><span class="sec-label">D</span> '
+        f'1:≤{d_bp[0]}mm · 2:{d_bp[0]}–{d_bp[1]}mm · 3:&gt;{d_bp[1]}mm</div>'
+        f'<div><span class="sec-label">C</span> '
+        f'1:≤{c_bp[0]} · 2:{c_bp[0]+1}–{c_bp[1]} · 3:&gt;{c_bp[1]}</div>'
+        f'<div><span class="sec-label">Umbrales</span> {thresh_parts}</div>'
+        f'<div><span class="sec-label">X</span> {x_parts}</div>'
+        f'</div></div>',
+        unsafe_allow_html=True
+    )
+
+    # ── Build editable dataframe ──────────────────────────────────────────────
+    flag_keys   = list(x_defs.keys())
+    c_col_name  = (C_DRIVER_LABELS.get(c_driver_field, c_driver_field.replace("_"," ").title())
+                   if c_driver_field else "C (N/A)")
+
+    edit_df = df[["handle","image_url","descripcion_web","complejidad","G","D"]].copy()
+    edit_df.rename(columns={
+        "image_url":"Img","descripcion_web":"Descripción","complejidad":"Nivel actual"
+    }, inplace=True)
+
+    if c_driver_field and "c_value" in df.columns:
+        edit_df[c_col_name] = df["c_value"].fillna(0).apply(lambda v: int(float(v)) if v==v else 0)
+    else:
+        edit_df["C (N/A)"] = 0
+
+    for flag in flag_keys:
+        fcol = f"X: {x_defs[flag]['label'][:20]}"
+        edit_df[fcol] = df["x_flags_parsed"].apply(lambda lst: flag in lst)
+
+    col_cfg = {
+        "handle":        st.column_config.TextColumn("Handle",      disabled=True, width="medium"),
+        "Img":           st.column_config.ImageColumn("",            width="small"),
+        "Descripción":   st.column_config.TextColumn("Descripción",  disabled=True, width="large"),
+        "Nivel actual":  st.column_config.TextColumn("Nivel actual", disabled=True, width="small"),
+        "G":             st.column_config.NumberColumn("G",          disabled=True, width="small"),
+        "D":             st.column_config.NumberColumn("D",          disabled=True, width="small"),
+    }
+    if c_driver_field:
+        col_cfg[c_col_name] = st.column_config.NumberColumn(c_col_name, min_value=0, max_value=999, width="small")
+    else:
+        col_cfg["C (N/A)"] = st.column_config.NumberColumn("C", disabled=True, width="small")
+    for flag in flag_keys:
+        fcol = f"X: {x_defs[flag]['label'][:20]}"
+        col_cfg[fcol] = st.column_config.CheckboxColumn(fcol, help=f"+{x_defs[flag]['points']}pts")
+
+    _skey = f"df_cat_{profile_key}"
+    _hkey = f"hash_cat_{profile_key}"
+    _hash = hash(str(edit_df.values.tolist()) + str(list(edit_df.columns)))
+    if st.session_state.get(_hkey) != _hash or _skey not in st.session_state:
+        st.session_state[_skey] = edit_df.copy()
+        st.session_state[_hkey] = _hash
+
+    with st.form(f"cat_form_{profile_key}"):
+        st.markdown(
+            f'<div class="sec-label" style="margin-bottom:0.4rem;">'
+            f'{len(df)} PRODUCTOS — edita C y X, luego "Recalcular"</div>',
+            unsafe_allow_html=True
+        )
+        form_edited = st.data_editor(
+            st.session_state[_skey], column_config=col_cfg,
+            use_container_width=True, hide_index=True, num_rows="fixed",
+        )
+        col_calc, col_save = st.columns(2)
+        calc_clicked = col_calc.form_submit_button("📊 Recalcular scores",   use_container_width=True)
+        save_clicked = col_save.form_submit_button("💾 Guardar C + X en DB", use_container_width=True, type="primary")
+
+    if calc_clicked or save_clicked:
+        st.session_state[_skey] = form_edited
+
+    edited = st.session_state[_skey]
+
+    # ── Score preview table ───────────────────────────────────────────────────
+    preview_rows, updates = [], []
+    for _, erow in edited.iterrows():
+        handle   = erow["handle"]
+        orig     = df[df["handle"] == handle]
+        if orig.empty:
+            continue
+        orig = orig.iloc[0]
+
+        x_active = [f for f in flag_keys if erow.get(f"X: {x_defs[f]['label'][:20]}", False)]
+        _rc = erow.get(c_col_name, 0) if c_driver_field else 0
+        try:
+            c_val = int(float(_rc)) if _rc == _rc else 0
+        except (TypeError, ValueError):
+            c_val = 0
+
+        G = orig.get("G"); D = orig.get("D")
+        C = compute_C(c_val, rules) if (c_val and c_driver_field) else None
+        x_map = {f: True for f in x_active}
+        pts     = compute_points(G, D, C, x_map, {
+            "primary_drivers": primary,
+            "secondary_drivers": profile_rules.get("secondary_drivers", []),
+            "x_flags": x_defs,
+        })
+        level   = assign_complexity(pts, thresholds)
+        cur     = orig.get("complejidad") or "?"
+        match   = level == cur
+
+        preview_rows.append({
+            "Handle":    handle,
+            "Nivel actual": cur,
+            "Score":     pts,
+            "Nivel modelo": level,
+            "✓": "✅" if match else f"⚠️→{level}",
+            "G": G, "D": D, "C": c_val if c_driver_field else "—",
+            "X": ", ".join(x_active) or "—",
+        })
+        updates.append({"handle": handle, "c_value": c_val, "x_flags": x_active,
+                        "complejidad": level if not match else cur})
+
+    if preview_rows:
+        matches = sum(1 for r in preview_rows if r["✓"].startswith("✅"))
+        total   = len(preview_rows)
+        pct     = int(100 * matches / total) if total else 0
+        color   = "#3fb950" if pct >= 80 else "#e3b341" if pct >= 50 else "#f85149"
+        st.markdown(
+            f'<div class="cal-card" style="display:flex;align-items:center;gap:1rem;margin-bottom:0.6rem;">'
+            f'<span style="font-size:1.8rem;font-weight:700;color:{color};">{pct}%</span>'
+            f'<div><div class="sec-label">COINCIDENCIA MODELO vs. NIVEL ACTUAL</div>'
+            f'<div style="font-size:0.82rem;color:#8b949e;">{matches}/{total} coinciden · '
+            f'{total-matches} desajustes</div></div></div>',
+            unsafe_allow_html=True
+        )
+        st.dataframe(
+            pd.DataFrame(preview_rows), use_container_width=True, hide_index=True,
+            column_config={"Score": st.column_config.NumberColumn("Score", width="small")},
+        )
+
+    if save_clicked and updates:
+        save_product_batch(updates)
+        _load_profile.clear()
+        _load_bucket.clear()
+        st.session_state.pop(_skey, None)
+        st.session_state.pop(_hkey, None)
+        st.success(f"✅ {len(updates)} productos actualizados.")
+        st.rerun()
+
+
 # ─── Tab 1 (new): Dynamic BOM per anchor per complexity level ────────────────
 
 def render_bom_entry(rules, profile_key):
@@ -2324,9 +2666,10 @@ def render_bom_entry(rules, profile_key):
             W = row.get("dim_w_mm") or 0
             H = row.get("dim_h_mm") or 0
             area = 2*(L+W)*H + L*W if L and W else None
-            factor = round(area / anchor_area, 3) if (area and anchor_area) else None
-            mat_est  = round(anchor_mat  * factor) if (anchor_mat  and factor and math.isfinite(anchor_mat))  else None
-            cons_est = round(anchor_cons * factor) if (anchor_cons and factor and math.isfinite(anchor_cons)) else None
+            _raw_factor = area / anchor_area if (area and anchor_area) else None
+            factor = round(_raw_factor, 3) if (_raw_factor is not None and math.isfinite(_raw_factor)) else None
+            mat_est  = round(anchor_mat  * factor) if (anchor_mat  and factor and math.isfinite(anchor_mat)  and math.isfinite(factor)) else None
+            cons_est = round(anchor_cons * factor) if (anchor_cons and factor and math.isfinite(anchor_cons) and math.isfinite(factor)) else None
             total_est = (mat_est or 0) + (cons_est or 0)
 
             extrap_rows.append({
@@ -2374,7 +2717,7 @@ def main(key_suffix: str = ""):
 
     rules = load_rules()
 
-    # Profile selector
+    # ── Profile selector ─────────────────────────────────────────────────────
     available_profiles = list(rules["profiles"].keys())
     col_prof, col_info = st.columns([2, 3])
     with col_prof:
@@ -2383,7 +2726,7 @@ def main(key_suffix: str = ""):
                                    key=f"cal_profile_key{key_suffix}")
     profile_rules = rules["profiles"][profile_key]
     with col_info:
-        primary = ", ".join(profile_rules.get("primary_drivers", []))
+        primary  = ", ".join(profile_rules.get("primary_drivers", []))
         c_driver = profile_rules.get("c_driver") or "no disponible en DB"
         st.markdown(
             f'<div class="cal-card" style="margin-top:0.3rem;">'
@@ -2395,69 +2738,55 @@ def main(key_suffix: str = ""):
             unsafe_allow_html=True
         )
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-        "📦 Ingreso de Costos",
-        "🎯 Sistema de Puntos",
-        "📊 Análisis C2 → C3",
-        "⚙️ Desglose HH",
-        "🔧 Templates",
-        "🔮 Extrapolación",
-        "💾 Guardar Hallazgos",
-        "🔬 ICM",
+    # ── 5-tab layout ─────────────────────────────────────────────────────────
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📦 BOM + Importar",
+        "🏷️ Categorización",
+        "🎯 Drivers & Umbrales",
+        "📊 Análisis & Extrapolación",
+        "💾 Hallazgos & ICM",
     ])
 
-    # Default dims from PROCESS_RULES benchmarks
-    benchmarks = profile_rules.get("cost_benchmarks", {})
-    c2_bench = benchmarks.get("C2", {})
-    c3_bench = benchmarks.get("C3", {})
-
-    c2_dims_def = [
-        c2_bench.get("dims", {}).get("L_mm", 470),
-        c2_bench.get("dims", {}).get("W_mm", 240),
-        c2_bench.get("dims", {}).get("H_mm", 1020),
-        c2_bench.get("dims", {}).get("espesor_mm", 1.0),
-    ]
-    c3_dims_def = [
-        c3_bench.get("dims", {}).get("L_mm", 1350),
-        c3_bench.get("dims", {}).get("W_mm", 600),
-        c3_bench.get("dims", {}).get("H_mm", 875),
-        c3_bench.get("dims", {}).get("espesor_mm", 1.5),
-    ]
-
+    # ── Tab 1: BOM per anchor per level + bulk import from measurements-p2 ──
     with tab1:
         all_products_from_tab1 = render_bom_entry(rules, profile_key)
         st.session_state[f"products_{profile_key}"] = all_products_from_tab1
+        st.divider()
+        render_measurements_import()
 
+    # Products dict for downstream tabs (keyed by "C1" / "C2" / "C3")
     products = st.session_state.get(f"products_{profile_key}", {})
-    # Re-attach expected_comp if loaded from state
     for name, p in products.items():
         if "expected_comp" not in p:
             p["expected_comp"] = "C2" if "c2" in name.lower() else ("C3" if "c3" in name.lower() else "C1")
 
+    # ── Tab 2: Categorización — live G/D/C/X scoring + X tuning ─────────────
     with tab2:
+        render_categorization(rules, profile_key)
+
+    # ── Tab 3: Drivers & Umbrales — point system + process thresholds ────────
+    with tab3:
         render_point_system(products, rules, profile_key)
 
-    with tab3:
-        render_cost_analysis(products)
-
+    # ── Tab 4: Análisis & Extrapolación — cost analysis for all 3 levels ─────
     with tab4:
-        render_process_breakdown(products, rules, profile_key)
+        render_cost_analysis(products)
+        st.divider()
+        # Extrapolation: one section per level that has anchor data
+        any_extrap = False
+        for comp in ["C1", "C2", "C3"]:
+            anchor_prod = next((p for p in products.values() if p.get("expected_comp") == comp), None)
+            anchor_name = next((n for n, p in products.items() if p.get("expected_comp") == comp), comp)
+            if anchor_prod:
+                any_extrap = True
+                render_extrapolation(anchor_prod, anchor_name, comp, rules, profile_key)
+        if not any_extrap:
+            st.info("Ingresa BOMs en el tab '📦 BOM + Importar' para activar la extrapolación.")
 
+    # ── Tab 5: Hallazgos & ICM ────────────────────────────────────────────────
     with tab5:
-        render_templates_editor(rules)
-
-    with tab6:
-        c2_prod = next((p for p in products.values() if p.get("expected_comp") == "C2"), None)
-        c2_name_t6 = next((n for n, p in products.items() if p.get("expected_comp") == "C2"), "C2")
-        if c2_prod:
-            render_extrapolation(c2_prod, c2_name_t6, "C2", rules, profile_key)
-        else:
-            st.info("Ingresa datos en el tab 'Ingreso de Costos' para activar la extrapolación.")
-
-    with tab7:
         render_save_findings(products, rules, profile_key)
-
-    with tab8:
+        st.divider()
         render_icm(rules, profile_key)
 
 
