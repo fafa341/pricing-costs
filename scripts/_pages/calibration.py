@@ -1337,7 +1337,7 @@ def render_extrapolation(anchor_product, anchor_name, anchor_comp, rules, profil
     cons_x_fixed = 0
     if "Proceso" in cons_df.columns and "Total" in cons_df.columns:
         # X-specific consumables don't scale
-        x_process_flags = {meta["primary_process"] for meta in x_defs.values()}
+        x_process_flags = {meta.get("primary_process", "") for meta in x_defs.values() if meta.get("primary_process")}
         for flag, meta in x_defs.items():
             if anchor_product["x_active"].get(flag):
                 proc = meta.get("primary_process", "")
@@ -2494,8 +2494,11 @@ def render_bom_entry(rules, profile_key):
             saved_cons = BARE4_CONSUMABLES_DEFAULT
 
         _x_label = ", ".join(x_flags_saved) if x_flags_saved else "—"
+        # Compute G/D from current DB dimensions for consistent display
+        _G_title, _ = compute_G(L, W, H, rules)
+        _D_title     = compute_D(e, rules)
         with st.expander(
-            f"📦 BOM del ancla: {selected_anchor}  ·  G={G_v or '—'} D={D_v or '—'} C={C_v or '—'} X=[{_x_label}]",
+            f"📦 BOM del ancla: {selected_anchor}  ·  G={_G_title or '—'} D={_D_title or '—'} C={C_v or '—'} X=[{_x_label}]",
             expanded=bool(anchor_handle == selected_anchor)
         ):
             # Dimension override row
