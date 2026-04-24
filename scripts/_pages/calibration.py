@@ -2287,6 +2287,22 @@ def render_categorization(rules: dict, profile_key: str):
     c_col_name  = (C_DRIVER_LABELS.get(c_driver_field, c_driver_field.replace("_"," ").title())
                    if c_driver_field else "C (N/A)")
 
+    # Recompute G/D from current dimensions (overrides stale DB g_score/d_score)
+    def _row_g(row):
+        L = float(row.get("dim_l_mm") or 0)
+        W = float(row.get("dim_w_mm") or 0)
+        H = float(row.get("dim_h_mm") or 0)
+        g, _ = compute_G(L, W, H, rules)
+        return g
+
+    def _row_d(row):
+        e = float(row.get("dim_espesor_mm") or 0)
+        return compute_D(e, rules)
+
+    df = df.copy()
+    df["G"] = df.apply(_row_g, axis=1)
+    df["D"] = df.apply(_row_d, axis=1)
+
     edit_df = df[["handle","image_url","descripcion_web","complejidad","G","D"]].copy()
     edit_df.rename(columns={
         "image_url":"Img","descripcion_web":"Descripción","complejidad":"Nivel actual"
@@ -2359,7 +2375,13 @@ def render_categorization(rules: dict, profile_key: str):
         except (TypeError, ValueError):
             c_val = 0
 
-        G = orig.get("G"); D = orig.get("D")
+        # Recompute G/D from current dimensions (not stale DB g_score/d_score)
+        _L = float(orig.get("dim_l_mm") or 0)
+        _W = float(orig.get("dim_w_mm") or 0)
+        _H = float(orig.get("dim_h_mm") or 0)
+        _e = float(orig.get("dim_espesor_mm") or 0)
+        G, _ = compute_G(_L, _W, _H, rules)
+        D    = compute_D(_e, rules)
         C = compute_C(c_val, rules) if (c_val and c_driver_field) else None
         x_map = {f: True for f in x_active}
         pts     = compute_points(G, D, C, x_map, {
@@ -2381,7 +2403,8 @@ def render_categorization(rules: dict, profile_key: str):
             "X": ", ".join(x_active) or "—",
         })
         updates.append({"handle": handle, "c_value": c_val, "x_flags": x_active,
-                        "complejidad": level if not match else cur})
+                        "complejidad": level if not match else cur,
+                        "g_score": G, "d_score": D})
 
     if preview_rows:
         matches = sum(1 for r in preview_rows if r["✓"].startswith("✅"))
@@ -2581,6 +2604,14 @@ def render_bom_entry(rules, profile_key):
                 cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total"  in cons_df.columns else 0
                 total      = mat_total + cons_total
                 _save_bom_to_db(selected_anchor, mat_df, cons_df)
+                # Update universal driver scores + dims in DB from current inputs
+                _score_payload = {
+                    "g_score": G_new, "d_score": D_new,
+                    "dim_l_mm": L, "dim_w_mm": W, "dim_h_mm": H, "dim_espesor_mm": e,
+                }
+                get_sb().table("products").update({k: v for k, v in _score_payload.items() if v is not None}).eq("handle", selected_anchor).execute()
+                _load_profile.clear()
+                _load_bucket.clear()
                 if "cost_benchmarks" not in rules["profiles"][profile_key]:
                     rules["profiles"][profile_key]["cost_benchmarks"] = {}
                 rules["profiles"][profile_key]["cost_benchmarks"][comp] = {
