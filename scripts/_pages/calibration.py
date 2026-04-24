@@ -2495,10 +2495,11 @@ def render_bom_entry(rules, profile_key):
         )
 
         anchor_row = bucket_df[bucket_df["handle"] == selected_anchor].iloc[0]
-        L = float(anchor_row.get("dim_l_mm") or 0)
-        W = float(anchor_row.get("dim_w_mm") or 0)
-        H = float(anchor_row.get("dim_h_mm") or 0)
-        e = float(anchor_row.get("dim_espesor_mm") or 0)
+        _df = lambda v: float(v) if (v is not None and v == v) else 0.0  # NaN-safe coerce
+        L = _df(anchor_row.get("dim_l_mm"))
+        W = _df(anchor_row.get("dim_w_mm"))
+        H = _df(anchor_row.get("dim_h_mm"))
+        e = _df(anchor_row.get("dim_espesor_mm"))
         G_v = anchor_row.get("G")
         D_v = anchor_row.get("D")
         C_v = anchor_row.get("c_value")
@@ -2605,11 +2606,15 @@ def render_bom_entry(rules, profile_key):
                 total      = mat_total + cons_total
                 _save_bom_to_db(selected_anchor, mat_df, cons_df)
                 # Update universal driver scores + dims in DB from current inputs
-                _score_payload = {
-                    "g_score": G_new, "d_score": D_new,
-                    "dim_l_mm": L, "dim_w_mm": W, "dim_h_mm": H, "dim_espesor_mm": e,
-                }
-                get_sb().table("products").update({k: v for k, v in _score_payload.items() if v is not None}).eq("handle", selected_anchor).execute()
+                _score_payload = {}
+                if G_new is not None: _score_payload["g_score"] = int(G_new)
+                if D_new is not None: _score_payload["d_score"] = int(D_new)
+                if L > 0: _score_payload["dim_l_mm"] = L
+                if W > 0: _score_payload["dim_w_mm"] = W
+                if H > 0: _score_payload["dim_h_mm"] = H
+                if e > 0: _score_payload["dim_espesor_mm"] = e
+                if _score_payload:
+                    get_sb().table("products").update(_score_payload).eq("handle", selected_anchor).execute()
                 _load_profile.clear()
                 _load_bucket.clear()
                 if "cost_benchmarks" not in rules["profiles"][profile_key]:
