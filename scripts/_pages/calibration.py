@@ -2664,8 +2664,8 @@ def render_bom_entry(rules, profile_key):
         _saved_cons_total = int(sum(_dn(r.get("Total"))  for r in (saved_cons or [])))
         all_products[f"{selected_anchor} ({comp})"] = {
             "G": G_new, "D": D_new, "area": area, "L": L, "W": W, "H": H, "e": e,
-            "c_count": int(anchor_row.get("c_value") or 0),
-            "C": compute_C(int(anchor_row.get("c_value") or 0), rules) if anchor_row.get("c_value") else None,
+            "c_count": int(_dn(anchor_row.get("c_value"))),
+            "C": compute_C(int(_dn(anchor_row.get("c_value"))), rules) if _dn(anchor_row.get("c_value")) else None,
             "x_active": {},
             "mat_df":   mat_df  if isinstance(mat_df,  pd.DataFrame) else pd.DataFrame(),
             "cons_df":  cons_df if isinstance(cons_df, pd.DataFrame) else pd.DataFrame(),
