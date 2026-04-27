@@ -565,18 +565,15 @@ def render_score_thresholds(rules: dict):
                     f'<span class="badge {bc}">{lvl}</span></div>',
                     unsafe_allow_html=True
                 )
-                hi_max  = max(max_score, 99)
-                lo_val  = min(int(t[0]), max_score)
-                hi_val  = min(int(t[1]), hi_max)
                 lo = c_lo.number_input(
                     f"Score mínimo {lvl}",
-                    value=lo_val, min_value=0, max_value=max_score,
+                    value=int(t[0]), min_value=0,
                     key=f"thr_lo_{proc}_{lvl}",
                     help=f"Score mínimo (inclusive) para clasificar como {lvl}"
                 )
                 hi = c_hi.number_input(
                     f"Score máximo {lvl}",
-                    value=hi_val, min_value=0, max_value=hi_max,
+                    value=int(t[1]), min_value=0,
                     key=f"thr_hi_{proc}_{lvl}",
                     help=f"Score máximo (inclusive) para clasificar como {lvl}. Usa 99 para 'cualquier valor mayor'."
                 )
