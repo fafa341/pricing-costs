@@ -461,7 +461,176 @@ def render_templates(rules: dict):
         st.success("✅ Templates guardados. calibration.py los usará automáticamente.")
 
 
-# ─── Tab 3: Standard Consumables ──────────────────────────────────────────────
+# ─── Tab 3: Score Thresholds ──────────────────────────────────────────────────
+
+def render_score_thresholds(rules: dict):
+    """
+    Dedicated editor for per-process score → complexity thresholds.
+    Shows driver context (which drivers sum into the score and their max value),
+    a visual range bar for C1/C2/C3, and direct inputs to tune lo/hi per level.
+    """
+    st.markdown(
+        '<p style="color:#8b949e;font-size:0.85rem;">'
+        'Para cada proceso, el score se obtiene sumando los drivers seleccionados (G=1–3, D=1–3, C=1–3, X=0–3). '
+        'Los umbrales definen a qué nivel de complejidad corresponde cada rango de score. '
+        'Ajusta los rangos aquí y guarda — el cambio afecta la auditoría de todos los productos.</p>',
+        unsafe_allow_html=True
+    )
+
+    templates = get_process_templates(rules)
+    all_procs = sorted(templates.keys())
+
+    DRIVER_MAX = {"G": 3, "D": 3, "C": 3, "X": 3}
+    DRIVER_COLOR = {"G": "#79c0ff", "D": "#d2a8ff", "C": "#ffa657", "X": "#e3b341"}
+    LEVEL_COLOR  = {"C1": "#3fb950", "C2": "#e3b341", "C3": "#f85149"}
+    BADGE_CLS    = {"C1": "badge-c1", "C2": "badge-c2", "C3": "badge-c3"}
+
+    changed: dict = {}
+
+    for proc in all_procs:
+        tmpl    = templates[proc]
+        drivers = tmpl.get("drivers", [])
+        thresh  = tmpl.get("score_thresholds", {})
+        descs   = tmpl.get("descriptions", {})
+
+        max_score = sum(DRIVER_MAX.get(d, 3) for d in drivers) if drivers else 6
+
+        # Build driver chips HTML
+        driver_chips = " + ".join(
+            f'<span style="display:inline-block;background:#1a2a3a;'
+            f'border:1px solid {DRIVER_COLOR.get(d,"#8b949e")}44;border-radius:5px;'
+            f'padding:1px 8px;font-size:0.75rem;font-weight:700;'
+            f'color:{DRIVER_COLOR.get(d,"#8b949e")};">{d} (0–{DRIVER_MAX.get(d,3)})</span>'
+            for d in drivers
+        ) if drivers else '<span style="color:#484f58;font-size:0.75rem;">Sin drivers configurados</span>'
+
+        # Visual score bar HTML: fill each segment proportionally
+        def _bar_seg(lo, hi, color, label):
+            if max_score == 0:
+                return ""
+            w = round((min(hi, max_score) - max(lo, 0)) / max_score * 100)
+            w = max(w, 0)
+            return (
+                f'<div style="flex:{w};background:{color};min-height:18px;position:relative;'
+                f'border-radius:3px;margin:0 1px;display:flex;align-items:center;'
+                f'justify-content:center;font-size:0.65rem;font-weight:700;color:#fff;'
+                f'white-space:nowrap;overflow:hidden;">'
+                f'{label} {lo}–{hi}</div>'
+            ) if w > 0 else ""
+
+        c1_t = thresh.get("C1", [0, max(max_score//3, 1)])
+        c2_t = thresh.get("C2", [c1_t[1]+1, max_score*2//3])
+        c3_t = thresh.get("C3", [c2_t[1]+1, max_score])
+        bar_html = (
+            f'<div style="display:flex;width:100%;margin:0.4rem 0 0.1rem 0;border-radius:4px;overflow:hidden;">'
+            f'{_bar_seg(c1_t[0], c1_t[1], "#238636", "C1")}'
+            f'{_bar_seg(c2_t[0], c2_t[1], "#9e6a03", "C2")}'
+            f'{_bar_seg(c3_t[0], c3_t[1], "#da3633", "C3")}'
+            f'</div>'
+            f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#484f58;">'
+            f'<span>0</span><span>max={max_score}</span></div>'
+        )
+
+        with st.expander(
+            f"⚡ {proc.replace('_',' ')}  ·  {' + '.join(drivers) if drivers else 'sin drivers'}",
+            expanded=False
+        ):
+            # Driver context + bar
+            st.markdown(
+                f'<div style="margin-bottom:0.5rem;">'
+                f'<div class="sec-label">DRIVERS → SCORE (0–{max_score})</div>'
+                f'<div style="margin-bottom:0.3rem;">{driver_chips}</div>'
+                f'{bar_html}</div>',
+                unsafe_allow_html=True
+            )
+
+            # Threshold inputs: one row per level
+            st.markdown(
+                '<div class="sec-label" style="margin-top:0.6rem;">UMBRALES SCORE → NIVEL</div>',
+                unsafe_allow_html=True
+            )
+
+            new_thresh: dict = {}
+            new_descs:  dict = {}
+
+            for lvl in ["C1", "C2", "C3"]:
+                t   = thresh.get(lvl, [0, 99])
+                d   = descs.get(lvl, "")
+                bc  = BADGE_CLS[lvl]
+                lc  = LEVEL_COLOR[lvl]
+
+                c_badge, c_lo, c_hi, c_desc = st.columns([1, 1, 1, 4])
+                c_badge.markdown(
+                    f'<div style="padding-top:1.6rem;">'
+                    f'<span class="badge {bc}">{lvl}</span></div>',
+                    unsafe_allow_html=True
+                )
+                lo = c_lo.number_input(
+                    f"Score mínimo {lvl}",
+                    value=int(t[0]), min_value=0, max_value=max_score,
+                    key=f"thr_lo_{proc}_{lvl}",
+                    help=f"Score mínimo (inclusive) para clasificar como {lvl}"
+                )
+                hi = c_hi.number_input(
+                    f"Score máximo {lvl}",
+                    value=int(t[1]) if int(t[1]) <= max_score else max_score,
+                    min_value=0, max_value=max(max_score, 99),
+                    key=f"thr_hi_{proc}_{lvl}",
+                    help=f"Score máximo (inclusive) para clasificar como {lvl}. Usa 99 para 'cualquier valor mayor'."
+                )
+                desc_val = c_desc.text_input(
+                    f"Descripción {lvl}",
+                    value=d,
+                    key=f"thr_desc_{proc}_{lvl}",
+                    placeholder=f"Ej: Pocas uniones, 1 operario…",
+                )
+                new_thresh[lvl] = [lo, hi]
+                new_descs[lvl]  = desc_val
+
+            # Validate: warn if ranges overlap or leave gaps
+            warnings = []
+            ranges = [(new_thresh[l][0], new_thresh[l][1], l) for l in ["C1","C2","C3"]]
+            for i in range(len(ranges)-1):
+                lo_a, hi_a, la = ranges[i]
+                lo_b, hi_b, lb = ranges[i+1]
+                if hi_a + 1 < lo_b:
+                    warnings.append(f"⚠️ Brecha entre {la} (hi={hi_a}) y {lb} (lo={lo_b}) — scores {hi_a+1}–{lo_b-1} no clasifican en ningún nivel")
+                if hi_a >= lo_b:
+                    warnings.append(f"⚠️ Solapamiento entre {la} (hi={hi_a}) y {lb} (lo={lo_b})")
+            for w in warnings:
+                st.warning(w)
+
+            changed[proc] = {
+                **tmpl,
+                "score_thresholds": new_thresh,
+                "descriptions":     new_descs,
+            }
+
+            # Live preview: max possible score breakdown per level
+            st.markdown(
+                f'<div style="font-size:0.73rem;color:#768390;margin-top:0.4rem;">'
+                f'Rango de scores: {" · ".join(f"<span style=\"color:{LEVEL_COLOR[l]}\">{l}: {new_thresh[l][0]}–{new_thresh[l][1]}</span>" for l in ["C1","C2","C3"])}'
+                f'  ·  Score máximo del proceso: <b style="color:#cdd9e5;">{max_score}</b>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+    st.markdown('<div style="margin-top:1rem;"></div>', unsafe_allow_html=True)
+    if st.button("💾 Guardar umbrales en PROCESS_RULES.json", type="primary", key="save_score_thresholds"):
+        if "process_templates" not in rules:
+            rules["process_templates"] = {}
+        # Only update score_thresholds + descriptions — leave T_setup/T_exec/n_ops intact
+        for proc, data in changed.items():
+            if proc not in rules["process_templates"]:
+                rules["process_templates"][proc] = {}
+            rules["process_templates"][proc]["score_thresholds"] = data["score_thresholds"]
+            rules["process_templates"][proc]["descriptions"]     = data["descriptions"]
+        rules["meta"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+        save_rules(rules)
+        st.success("✅ Umbrales guardados. La auditoría de productos usará los nuevos rangos.")
+
+
+# ─── Tab 4 (was 3): Standard Consumables ─────────────────────────────────────
 
 def render_consumables(rules: dict):
     st.markdown(
@@ -592,9 +761,10 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "💰 Tarifas HH",
         "⏱️ Templates de Proceso",
+        "⚡ Umbrales de Score",
         "🔩 Consumibles Estándar",
     ])
 
@@ -605,6 +775,9 @@ def main():
         render_templates(rules)
 
     with tab3:
+        render_score_thresholds(rules)
+
+    with tab4:
         render_consumables(rules)
 
 
