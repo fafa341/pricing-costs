@@ -240,6 +240,39 @@ def _factor_escala(L, W, H, aL, aW, aH) -> float | None:
     return round(f, 4) if math.isfinite(f) else None
 
 
+def _build_system_consumables(
+    proc_list: list, per_proc: dict, rules: dict,
+    factor: float = 1.0, prod_comp: str = "C1"
+) -> list:
+    """
+    Build consumables from the process catalog (process_consumables[proc][level])
+    for each active process, using its derived per-process complexity level.
+    Each row is tagged with Proceso. Quantities and Totals are scaled by factor.
+
+    Returns list of dicts with schema: {Producto, Proceso, Cantidad, Unidad, Precio_u, Total}
+    """
+    catalog = rules.get("process_consumables", {})
+    rows: list = []
+    for proc in proc_list:
+        info  = per_proc.get(proc, {})
+        level = info.get("level") or prod_comp   # fallback to product complexity
+        items = catalog.get(proc, {}).get(level, [])
+        for item in items:
+            qty   = _nan(item.get("Cantidad", 1))
+            price = _nan(item.get("Precio_u", 0))
+            scaled_qty   = round(qty * factor, 4)
+            scaled_total = round(scaled_qty * price)
+            rows.append({
+                "Producto":  item.get("Producto", ""),
+                "Proceso":   proc,
+                "Cantidad":  scaled_qty,
+                "Unidad":    item.get("Unidad", "u"),
+                "Precio_u":  int(price),
+                "Total":     scaled_total,
+            })
+    return rows
+
+
 def _scale_mat_rows(anchor_rows: list, factor: float) -> list:
     """Scale anchor material rows by factor_escala."""
     out = []
@@ -553,50 +586,65 @@ def render_profile_tier(product, L, W, H, e, rules):
     return proc_list, prod_comp, per_proc
 
 
-def render_bom_extrapolated(anchor_mat: list, anchor_cons: list, factor: float, handle: str):
-    """Show scaled anchor BOM as read-only preview + Fork button."""
-    scaled_mat  = _scale_mat_rows(anchor_mat, factor)
-    scaled_cons = _scale_cons_rows(anchor_cons, factor)
-    mat_total   = sum(_nan(r.get("total"))  for r in scaled_mat)
-    cons_total  = sum(_nan(r.get("Total"))  for r in scaled_cons)
+def render_bom_extrapolated(
+    anchor_mat: list, system_cons: list, factor: float, handle: str
+):
+    """
+    Show extrapolated BOM:
+    - Materials: anchor BOM × factor_escala (product-specific)
+    - Consumables: process catalog × per-process levels × factor (system-derived)
+    Both are read-only. Fork button saves them as the product's own BOM.
+    """
+    scaled_mat = _scale_mat_rows(anchor_mat, factor)
+    mat_total  = sum(_nan(r.get("total")) for r in scaled_mat)
+    cons_total = sum(_nan(r.get("Total")) for r in system_cons)
 
     st.markdown(
         f'<div style="background:#0a1929;border:1px dashed #1f6feb;border-radius:8px;'
         f'padding:0.6rem 1rem;margin-bottom:0.6rem;font-size:0.8rem;color:#79c0ff;">'
-        f'🔵 Template extrapolado del ancla · factor = {factor:.3f}× · '
+        f'🔵 Template extrapolado · factor = {factor:.3f}× · '
         f'mat <b>{_clp(mat_total)}</b> · cons <b>{_clp(cons_total)}</b> · '
         f'total <b style="color:#3fb950;">{_clp(mat_total+cons_total)}</b>'
         f'</div>',
         unsafe_allow_html=True
     )
 
-    # Materials preview
+    # Materials preview (scaled from anchor)
     if scaled_mat:
-        st.markdown('<div class="sec-label">MATERIALES — extrapolados</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sec-label">MATERIALES — ancla × factor_escala</div>',
+            unsafe_allow_html=True
+        )
         df_mat = pd.DataFrame([{
-            "Material":    r.get("Material",""),
-            "Dimensiones": r.get("Dimensiones",""),
-            "kg/ML/u":     r.get("kg_ml",""),
-            "$/kg o $/u":  r.get("precio_kg",""),
-            "Cant.":       r.get("Cantidad",1),
+            "Material":    r.get("Material", ""),
+            "Dimensiones": r.get("Dimensiones", ""),
+            "kg/ML/u":     r.get("kg_ml", ""),
+            "$/kg o $/u":  r.get("precio_kg", ""),
+            "Cant.":       r.get("Cantidad", 1),
             "Total $":     int(_nan(r.get("total"))),
         } for r in scaled_mat])
         st.dataframe(df_mat, use_container_width=True, hide_index=True,
                      column_config={"Total $": st.column_config.NumberColumn(format="$ %d")})
 
-    # Consumables preview grouped by process
-    if scaled_cons:
-        st.markdown('<div class="sec-label" style="margin-top:0.6rem;">CONSUMIBLES — extrapolados</div>', unsafe_allow_html=True)
-        by_proc: dict[str,list] = {}
-        for r in scaled_cons:
-            by_proc.setdefault(r.get("Proceso","—"), []).append(r)
+    # Consumables preview — from process catalog, grouped by process
+    st.markdown(
+        '<div class="sec-label" style="margin-top:0.8rem;">'
+        'CONSUMIBLES — catálogo de procesos × nivel × factor_escala</div>',
+        unsafe_allow_html=True
+    )
+    if system_cons:
+        by_proc: dict[str, list] = {}
+        for r in system_cons:
+            by_proc.setdefault(r.get("Proceso", "—"), []).append(r)
         for proc, rows in by_proc.items():
             sub = sum(_nan(r.get("Total")) for r in rows)
-            with st.expander(f"{proc.replace('_',' ')} — {_clp(sub)}", expanded=True):
+            with st.expander(
+                f"{proc.replace('_',' ')} — {_clp(sub)}", expanded=True
+            ):
                 df_c = pd.DataFrame([{
-                    "Producto":  r.get("Producto",""),
-                    "Cantidad":  r.get("Cantidad",""),
-                    "Unidad":    r.get("Unidad",""),
+                    "Producto":  r.get("Producto", ""),
+                    "Cantidad":  r.get("Cantidad", ""),
+                    "Unidad":    r.get("Unidad", ""),
                     "Precio u.": int(_nan(r.get("Precio_u"))),
                     "Total $":   int(_nan(r.get("Total"))),
                 } for r in rows])
@@ -605,38 +653,47 @@ def render_bom_extrapolated(anchor_mat: list, anchor_cons: list, factor: float, 
                                  "Total $":   st.column_config.NumberColumn(format="$ %d"),
                                  "Precio u.": st.column_config.NumberColumn(format="$ %d"),
                              })
+    else:
+        st.caption("Sin consumibles configurados para los procesos activos.")
 
-    # Fork button
+    # Fork button → saves as product's own editable BOM
     st.markdown('<div style="margin-top:0.8rem;"></div>', unsafe_allow_html=True)
     if st.button(
-        f"🍴 Fork template — guardar BOM extrapolado como propio de este producto",
+        "🍴 Fork template — guardar como BOM propio de este producto",
         key=f"fork_{handle}", type="primary", use_container_width=True
     ):
-        _save_bom_db(handle, scaled_mat, scaled_cons)
+        _save_bom_db(handle, scaled_mat, system_cons)
         _all_products.clear()
         _get_product.clear()
-        st.success("✅ BOM forkeado y guardado. Ahora puedes editarlo.")
+        st.success("✅ BOM forkeado. Ahora puedes editarlo.")
         st.rerun()
 
     return mat_total, cons_total
 
 
-def render_bom_editable(product: dict):
-    """Editable BOM for anchor/editado products."""
+def render_bom_editable(product: dict, system_cons: list):
+    """
+    Editable BOM for anchor/editado products.
+    Consumables are seeded from the system algorithm (process catalog × per-process levels).
+    If the product has no saved consumables, system_cons is used as the initial data.
+    A 'Reset al template' button resets to system_cons at any time.
+    """
     handle    = product["handle"]
     saved_mat = _pj(product.get("bom_materials"),  [])
     saved_con = _pj(product.get("bom_consumables"), [])
 
-    mat_total  = int(sum(_nan(r.get("total"))  for r in saved_mat))
-    cons_total = int(sum(_nan(r.get("Total"))  for r in saved_con))
-
     # ── Materials ────────────────────────────────────────────────────────────
-    mat_def  = saved_mat or [{"Subconjunto":"","Dimensiones":"","Material":"","Cantidad":1.0,"kg_ml":0.0,"precio_kg":3600,"total":0}]
-    ms, mh   = f"mat_{handle}", f"mh_{handle}"
-    mhash    = hash(str(mat_def))
+    mat_def = saved_mat or [{
+        "Subconjunto": "", "Dimensiones": "", "Material": "",
+        "Cantidad": 1.0, "kg_ml": 0.0, "precio_kg": 3600, "total": 0
+    }]
+    ms, mh = f"mat_{handle}", f"mh_{handle}"
+    mhash  = hash(str(mat_def))
     if st.session_state.get(mh) != mhash or ms not in st.session_state:
         st.session_state[ms] = pd.DataFrame(mat_def)
         st.session_state[mh] = mhash
+
+    mat_total = int(sum(_nan(r.get("total")) for r in saved_mat))
 
     with st.form(f"matf_{handle}"):
         st.markdown(
@@ -663,33 +720,79 @@ def render_bom_editable(product: dict):
         st.session_state.pop(ms, None); st.session_state.pop(mh, None)
         st.success("✅ Materiales guardados"); st.rerun()
 
-    # ── Consumables ──────────────────────────────────────────────────────────
-    by_proc: dict[str,int] = {}
-    for r in saved_con:
-        p = r.get("Proceso","—")
-        by_proc[p] = by_proc.get(p,0) + int(_nan(r.get("Total")))
-    if by_proc:
-        parts = "  ·  ".join(
-            f'<span style="color:#cdd9e5;">{p}</span> <span style="color:#e3b341;">{_clp(t)}</span>'
-            for p, t in by_proc.items()
+    # ── Consumables (seeded from system algorithm) ────────────────────────────
+    # Use saved_con if it exists, otherwise fall back to system_cons
+    active_con = saved_con if saved_con else system_cons
+    cons_total = int(sum(_nan(r.get("Total")) for r in active_con))
+
+    # Source banner
+    if not saved_con and system_cons:
+        st.markdown(
+            '<div style="background:#0d2a1a;border:1px dashed #238636;border-radius:6px;'
+            'padding:0.4rem 0.8rem;margin-bottom:0.4rem;font-size:0.77rem;color:#3fb950;">'
+            '⚙️ Consumibles del catálogo de procesos — guarda para fijar como propios de este producto.'
+            '</div>',
+            unsafe_allow_html=True
         )
-        st.markdown(f'<div style="font-size:0.75rem;color:#768390;margin-bottom:0.3rem;">{parts}</div>', unsafe_allow_html=True)
+    elif saved_con:
+        # Show reset button outside the form
+        rc, ic = st.columns([2, 5])
+        with rc:
+            if st.button(
+                "↩️ Reset al template",
+                key=f"reset_cons_{handle}",
+                help="Reemplaza los consumibles guardados con los del catálogo de procesos"
+            ):
+                _save_bom_db(handle, saved_mat, system_cons)
+                _all_products.clear(); _get_product.clear()
+                st.session_state.pop(f"con_{handle}", None)
+                st.session_state.pop(f"ch_{handle}", None)
+                st.success("↩️ Consumibles reseteados al template del sistema")
+                st.rerun()
+        with ic:
+            st.markdown(
+                '<div style="font-size:0.75rem;color:#768390;padding-top:0.5rem;">'
+                '🟡 Consumibles editados manualmente</div>',
+                unsafe_allow_html=True
+            )
 
-    con_def = saved_con or [{"Producto":"","Proceso":"soldadura","Cantidad":1.0,"Unidad":"u","Precio_u":0,"Total":0}]
-    cs, ch  = f"con_{handle}", f"ch_{handle}"
-    chash   = hash(str(con_def))
+    # System consumables summary banner
+    if system_cons:
+        sys_total = sum(_nan(r.get("Total")) for r in system_cons)
+        by_proc_sys: dict[str, float] = {}
+        for r in system_cons:
+            p = r.get("Proceso", "—")
+            by_proc_sys[p] = by_proc_sys.get(p, 0) + _nan(r.get("Total"))
+        parts_sys = "  ·  ".join(
+            f'<span style="color:#768390;">{p.replace("_"," ")}</span>'
+            f' <span style="color:#e3b341;">{_clp(t)}</span>'
+            for p, t in by_proc_sys.items()
+        )
+        st.markdown(
+            f'<div style="font-size:0.73rem;color:#768390;margin-bottom:0.3rem;">'
+            f'Sistema: {parts_sys}'
+            f'<span style="color:#8b949e;margin-left:0.8rem;">→ total {_clp(sys_total)}</span>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+    PROCS = sorted({
+        "laser", "corte_manual", "armado_trazado", "plegado", "cilindrado",
+        "soldadura", "pulido", "qc", "grabado_laser", "refrigeracion", "pintura",
+    } | {r.get("Proceso", "") for r in active_con if r.get("Proceso")})
+
+    cs, ch = f"con_{handle}", f"ch_{handle}"
+    chash  = hash(str(active_con))
     if st.session_state.get(ch) != chash or cs not in st.session_state:
-        st.session_state[cs] = pd.DataFrame(con_def)
+        st.session_state[cs] = pd.DataFrame(active_con) if active_con else pd.DataFrame(
+            [{"Producto": "", "Proceso": "soldadura", "Cantidad": 1.0, "Unidad": "u", "Precio_u": 0, "Total": 0}]
+        )
         st.session_state[ch] = chash
-
-    PROCS = ["laser","corte_manual","armado_trazado","plegado","cilindrado","soldadura",
-             "pulido","qc","grabado_laser","refrigeracion","pintura",
-             "Pulido","Soldadura","Armado/Trazado"]
 
     with st.form(f"conf_{handle}"):
         st.markdown(
             f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">'
-            f'<div class="sec-label">CONSUMIBLES — {len(saved_con)} ítems</div>'
+            f'<div class="sec-label">CONSUMIBLES — {len(active_con)} ítems</div>'
             f'<div class="num-med" style="color:#e3b341;">{_clp(cons_total)}</div></div>',
             unsafe_allow_html=True
         )
@@ -699,7 +802,7 @@ def render_bom_editable(product: dict):
                 "Precio_u": st.column_config.NumberColumn("Precio u.", format="%.0f", step=1),
                 "Total":    st.column_config.NumberColumn("Total $",   format="%.0f", step=1),
                 "Cantidad": st.column_config.NumberColumn("Cant.",      format="%.3f", step=0.001),
-                "Proceso":  st.column_config.SelectboxColumn("Proceso", options=PROCS),
+                "Proceso":  st.column_config.SelectboxColumn("Proceso", options=sorted(PROCS)),
             }
         )
         sc_btn = st.form_submit_button("💾 Guardar consumibles", use_container_width=True)
@@ -945,21 +1048,21 @@ def main():
 
     st.divider()
 
-    # ── BOM section: depends on source ───────────────────────────────────────
-    _, card_cls = SOURCE_LABELS[source][0], SOURCE_LABELS[source][2]
+    # ── System consumables (derived from process catalog × per-process levels) ──
+    eff_factor  = factor or 1.0
+    system_cons = _build_system_consumables(proc_list, per_proc, rules, eff_factor, comp)
 
+    # ── BOM section: depends on source ───────────────────────────────────────
     if source == "extrapolado":
-        # Load anchor BOM from DB
         anchor_row = _get_product(anchor_handle) if anchor_handle else None
         if anchor_row and factor:
-            anchor_mat_rows  = _pj(anchor_row.get("bom_materials"),  [])
-            anchor_cons_rows = _pj(anchor_row.get("bom_consumables"), [])
-            if anchor_mat_rows or anchor_cons_rows:
+            anchor_mat_rows = _pj(anchor_row.get("bom_materials"), [])
+            if anchor_mat_rows or system_cons:
                 mat_total, cons_total = render_bom_extrapolated(
-                    anchor_mat_rows, anchor_cons_rows, factor, product["handle"]
+                    anchor_mat_rows, system_cons, factor, product["handle"]
                 )
             else:
-                st.info(f"Ancla `{anchor_handle}` no tiene BOM guardado. Ingresa su BOM en Calibración.")
+                st.info(f"Ancla `{anchor_handle}` no tiene BOM de materiales. Ingresa su BOM en Calibración.")
                 mat_total, cons_total = 0, 0
         else:
             if not anchor_handle:
@@ -970,7 +1073,7 @@ def main():
 
     else:
         # anchor or editado: show editable BOM (materials + consumables)
-        mat_total, cons_total = render_bom_editable(product)
+        mat_total, cons_total = render_bom_editable(product, system_cons)
 
     # ── X flags editor ────────────────────────────────────────────────────────
     with st.expander("✏️ Editar características X + driver C", expanded=False):
