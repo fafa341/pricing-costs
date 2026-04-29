@@ -1,0 +1,4 @@
+﻿perfil_proceso,complejidad,n_productos_con_bom,anchor_mat_cost_clp,nota,r2,slope_clp_per_factor,intercept_clp,mape_pct,max_abs_dev_pct,linearity_verdict
+p-basurero-cil,C2,1,47740.0,Insuficientes datos (necesita ≥2),,,,,,⚪ Sin datos
+p-basurero-cil,C3,1,,Insuficientes datos (necesita ≥2),,,,,,⚪ Sin datos
+p-sumidero,C2,1,15802.0,Insuficientes datos (necesita ≥2),,,,,,⚪ Sin datos
