@@ -1,28 +1,31 @@
 """
 validate_extrapolation.py — Dulox Extrapolation Cost Validation
 ================================================================
-Reads all products from Supabase, compares extrapolated material costs
-(anchor BOM × factor_escala) against real costs (product's own BOM).
+Only analyses products that have bom_materials filled in Supabase.
+Compares extrapolated material cost (anchor BOM × factor_escala) against
+each product's own real BOM cost.
 
 Produces three CSVs in dataset/:
 
-  1. extrapolation_validation.csv  — one row per product
+  1. extrapolation_validation.csv  — one row per product with BOM
        • extrapolated_mat_cost vs real_mat_cost
-       • deviation (CLP + %) and accuracy classification
+       • deviation (CLP + %) and accuracy tier
        • factor_escala, anchor handle, dims
 
-  2. material_decomposition.csv    — one row per BOM line item per product
-       • anchor line scaled vs real line for products with own BOM
-       • helps identify which materials diverge from linear assumption
+  2. material_decomposition.csv    — one row per BOM line item
+       • anchor line scaled vs real line (matched by material name)
+       • identifies which materials diverge from linear assumption
+       • flags materials absent from anchor as "línea nueva"
 
   3. linearity_report.csv          — one row per (profile, complexity) bucket
-       • R², slope, MAPE, and non-linearity flag
-       • answers: how linear does cost grow with factor_escala?
+       • OLS regression of real_cost ~ factor_escala
+       • R², slope vs theoretical slope (anchor cost), MAPE
+       • linearity verdict
+
+Credentials: reads from .env.local in project root.
 
 Usage:
     python3 scripts/validate_extrapolation.py
-
-Credentials: reads from .streamlit/secrets.toml or env vars.
 """
 
 import json
@@ -40,37 +43,21 @@ sys.path.insert(0, str(ROOT / "scripts"))
 # ─── Credentials ──────────────────────────────────────────────────────────────
 
 def _get_credentials():
-    try:
-        import tomllib
-        secrets_path = ROOT / ".streamlit" / "secrets.toml"
-        with open(secrets_path, "rb") as f:
-            s = tomllib.load(f)
-        return s["SUPABASE_URL"], s["SUPABASE_SERVICE_ROLE"]
-    except Exception:
-        pass
-    try:
-        import tomli as tomllib
-        secrets_path = ROOT / ".streamlit" / "secrets.toml"
-        with open(secrets_path, "rb") as f:
-            s = tomllib.load(f)
-        return s["SUPABASE_URL"], s["SUPABASE_SERVICE_ROLE"]
-    except Exception:
-        pass
-    # Manual parse fallback (no toml library needed)
-    try:
-        secrets_path = ROOT / ".streamlit" / "secrets.toml"
-        text = secrets_path.read_text()
-        url = key = ""
-        for line in text.splitlines():
-            if line.strip().startswith("SUPABASE_URL"):
+    """Read SUPABASE_PROJECT_URL + SUPABASE_SERVICE_ROLE from .env.local."""
+    env_path = ROOT / ".env.local"
+    url = key = ""
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("SUPABASE_PROJECT_URL"):
                 url = line.split("=", 1)[1].strip().strip('"').strip("'")
-            if line.strip().startswith("SUPABASE_SERVICE_ROLE"):
+            elif line.startswith("SUPABASE_SERVICE_ROLE"):
                 key = line.split("=", 1)[1].strip().strip('"').strip("'")
-        if url and key:
-            return url, key
-    except Exception:
-        pass
-    return os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_SERVICE_ROLE", "")
+    if not url:
+        url = os.environ.get("SUPABASE_URL", "")
+    if not key:
+        key = os.environ.get("SUPABASE_SERVICE_ROLE", "")
+    return url, key
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -123,36 +110,56 @@ def _cons_total(bom_rows: list) -> float:
 
 # ─── Load data ────────────────────────────────────────────────────────────────
 
-def load_products(sb) -> list[dict]:
+def load_products(sb) -> tuple[list[dict], list[dict]]:
+    """
+    Returns (all_products, bom_products).
+    all_products: every row (for anchor lookup even when they have no BOM).
+    bom_products: only rows with bom_materials filled (the analysis set).
+    """
     print("Loading products from Supabase...")
     rows = (
         sb.table("products")
         .select(
             "handle,descripcion_web,perfil_proceso,complejidad,familia,subfamilia,"
             "dim_l_mm,dim_w_mm,dim_h_mm,dim_espesor_mm,g_score,d_score,"
-            "c_value,x_flags,bom_materials,bom_consumables,is_anchor,image_url"
+            "c_value,x_flags,bom_materials,bom_consumables,is_anchor"
         )
         .order("perfil_proceso,complejidad,handle")
         .execute()
         .data
         or []
     )
-    print(f"  {len(rows)} products loaded")
-    return rows
+
+    bom_rows = []
+    for p in rows:
+        m = p.get("bom_materials")
+        if not m or m in ["[]", "", "null", "None"]:
+            continue
+        try:
+            parsed = json.loads(m) if isinstance(m, str) else m
+            if parsed and len(parsed) > 0:
+                bom_rows.append(p)
+        except Exception:
+            pass
+
+    print(f"  {len(rows)} total products | {len(bom_rows)} with BOM materials")
+    return rows, bom_rows
 
 
-def load_rules() -> dict:
+def load_rules(sb) -> dict:
+    """Load PROCESS_RULES from Supabase app_settings (live), fallback to local JSON."""
+    try:
+        r = sb.table("app_settings").select("value").eq("key", "process_rules").single().execute()
+        if r.data and r.data.get("value"):
+            print("  PROCESS_RULES loaded from Supabase app_settings")
+            return r.data["value"]
+    except Exception:
+        pass
     rules_path = ROOT / "files-process" / "PROCESS_RULES.json"
     if rules_path.exists():
+        print("  PROCESS_RULES loaded from local JSON (fallback)")
         return json.loads(rules_path.read_text(encoding="utf-8"))
-    try:
-        url, key = _get_credentials()
-        from supabase import create_client
-        sb = create_client(url, key)
-        r = sb.table("app_settings").select("value").eq("key", "process_rules").single().execute()
-        return r.data["value"] if r.data else {}
-    except Exception:
-        return {}
+    return {}
 
 
 # ─── Core analysis ────────────────────────────────────────────────────────────
@@ -257,6 +264,8 @@ def build_validation_rows(products: list[dict], anchors: dict) -> list[dict]:
         if extrap_mat is not None and real_mat:
             acc_label, dev_clp, dev_pct = classify_accuracy(real_mat, extrap_mat)
 
+        dev_pct_num = dev_pct * 100 if (dev_pct is not None and not math.isnan(dev_pct)) else None
+
         rows.append({
             "handle":              handle,
             "descripcion":         p.get("descripcion_web", ""),
@@ -274,14 +283,14 @@ def build_validation_rows(products: list[dict], anchors: dict) -> list[dict]:
             "anchor_W_mm":         aW or "",
             "anchor_H_mm":         aH or "",
             "anchor_area_mm2":     round(_area(aL, aW, aH)) if _area(aL, aW, aH) else "",
-            "factor_escala":       factor if factor is not None else "",
+            "factor_escala":       round(factor, 4) if factor is not None else "",
             "anchor_mat_cost_clp": int(anchor_mat) if anchor_mat else "",
             "extrap_mat_cost_clp": int(extrap_mat) if extrap_mat is not None else "",
             "real_mat_cost_clp":   int(real_mat) if real_mat is not None else "",
-            "tiene_bom_propio":    "Sí" if has_own_bom else "No",
             "deviation_clp":       int(dev_clp) if dev_clp is not None else "",
-            "deviation_pct":       f"{dev_pct*100:.1f}%" if dev_pct is not None and not math.isnan(dev_pct) else "",
-            "accuracy_tier":       acc_label if has_own_bom else "⚪ Sin BOM propio",
+            "deviation_pct":       f"{dev_pct_num:.1f}%" if dev_pct_num is not None else "",
+            "deviation_pct_num":   round(dev_pct_num, 2) if dev_pct_num is not None else None,
+            "accuracy_tier":       acc_label if (extrap_mat is not None and real_mat) else "⚪ Sin comparación",
             "n_mat_lines":         len(own_mat_rows),
         })
     return rows
@@ -470,32 +479,37 @@ def build_linearity_rows(validation_df: pd.DataFrame) -> list[dict]:
 def main():
     url, key = _get_credentials()
     if not url or not key:
-        print("ERROR: SUPABASE_URL / SUPABASE_SERVICE_ROLE not available.")
+        print("ERROR: SUPABASE_PROJECT_URL / SUPABASE_SERVICE_ROLE not found in .env.local")
         sys.exit(1)
 
     from supabase import create_client
     sb = create_client(url, key)
 
-    products = load_products(sb)
-    rules    = load_rules()
+    all_products, bom_products = load_products(sb)
+    rules = load_rules(sb)
 
-    print("Building anchor index...")
-    anchors = build_anchor_index(products, rules)
-    n_found  = sum(1 for v in anchors.values() if v.get("found"))
+    # ── Anchor index built from ALL products (anchors may not have own BOM yet)
+    print("\nBuilding anchor index...")
+    anchors = build_anchor_index(all_products, rules)
+    n_found    = sum(1 for v in anchors.values() if v.get("found"))
     n_with_bom = sum(1 for v in anchors.values() if v.get("mat_total", 0) > 0)
-    print(f"  {len(anchors)} anchor slots | {n_found} anchors found in DB | {n_with_bom} with BOM data")
+    print(f"  {len(anchors)} anchor slots defined | {n_found} found in DB | {n_with_bom} with BOM data")
+    for (pk, comp), info in sorted(anchors.items()):
+        status = "✅ BOM" if info.get("mat_total",0) > 0 else ("⚠️ no BOM" if info.get("found") else "❌ not found")
+        print(f"    [{pk} · {comp}]  {info.get('handle','—')}  {status}")
 
-    # ── CSV 1: Product validation ──────────────────────────────────────────────
-    print("\nBuilding product validation table...")
-    val_rows = build_validation_rows(products, anchors)
+    # ── CSV 1: Validation — only BOM products ─────────────────────────────────
+    print(f"\nBuilding validation table ({len(bom_products)} BOM products)...")
+    val_rows = build_validation_rows(bom_products, anchors)
     val_df   = pd.DataFrame(val_rows)
 
-    # Summary counts
-    has_extrap = val_df[val_df["extrap_mat_cost_clp"] != ""]
-    has_both   = has_extrap[has_extrap["real_mat_cost_clp"] != ""]
-    print(f"  {len(val_df)} total products")
-    print(f"  {len(has_extrap)} products with extrapolation possible (anchor found + factor computed)")
-    print(f"  {len(has_both)} products with both extrapolated AND real BOM (comparison possible)")
+    comparable = val_df[
+        (val_df["extrap_mat_cost_clp"] != "") &
+        (val_df["real_mat_cost_clp"] != "") &
+        (val_df["es_ancla"] != "⭐ Sí")
+    ]
+    print(f"  {len(val_df)} BOM products in table")
+    print(f"  {len(comparable)} non-anchor products with both extrap + real cost (comparable)")
 
     out_val = ROOT / "dataset" / "extrapolation_validation.csv"
     val_df.to_csv(out_val, index=False, encoding="utf-8-sig")
@@ -503,9 +517,10 @@ def main():
 
     # ── CSV 2: Material decomposition ─────────────────────────────────────────
     print("\nBuilding material decomposition table...")
-    decomp_rows = build_decomposition_rows(products, anchors)
+    decomp_rows = build_decomposition_rows(bom_products, anchors)
     decomp_df   = pd.DataFrame(decomp_rows)
-    print(f"  {len(decomp_df)} material line comparisons across {decomp_df['handle'].nunique() if not decomp_df.empty else 0} products")
+    n_prods = decomp_df["handle"].nunique() if not decomp_df.empty else 0
+    print(f"  {len(decomp_df)} line comparisons across {n_prods} non-anchor products")
 
     out_decomp = ROOT / "dataset" / "material_decomposition.csv"
     decomp_df.to_csv(out_decomp, index=False, encoding="utf-8-sig")
@@ -522,23 +537,25 @@ def main():
 
     # ── Console summary ───────────────────────────────────────────────────────
     print("\n" + "=" * 70)
-    print("EXTRAPOLATION ACCURACY SUMMARY")
+    print("ACCURACY SUMMARY  (non-anchor products with comparable costs)")
     print("=" * 70)
-    if not has_both.empty:
-        tier_counts = has_both["accuracy_tier"].value_counts()
+    if not comparable.empty:
+        tier_counts = comparable["accuracy_tier"].value_counts()
         for tier, count in tier_counts.items():
-            pct = count / len(has_both) * 100
+            pct = count / len(comparable) * 100
             print(f"  {tier:40s}  {count:3d} ({pct:.0f}%)")
+        print(f"\n  Median abs deviation: {comparable['deviation_pct_num'].abs().median():.1f}%")
+        print(f"  Mean abs deviation:   {comparable['deviation_pct_num'].abs().mean():.1f}%")
+        print(f"  Worst case:           {comparable['deviation_pct_num'].abs().max():.1f}%")
     else:
-        print("  No products with both extrapolated and real costs to compare.")
+        print("  No comparable products found.")
 
     print("\nLINEARITY SUMMARY")
     print("=" * 70)
     if not lin_df.empty:
         for _, row in lin_df.iterrows():
-            n = row.get("n_productos_con_bom", 0)
             print(f"  {row['perfil_proceso']:30s} {row['complejidad']:4s}  "
-                  f"n={n:3}  {row.get('linearity_verdict','')}")
+                  f"n={row.get('n_productos_con_bom',0):2}  {row.get('linearity_verdict','')}")
     else:
         print("  Insufficient BOM data for linearity analysis.")
 
