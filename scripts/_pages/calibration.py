@@ -131,48 +131,32 @@ hr { border-color:#21262d !important; }
 </style>
 """
 
-# ─── Pre-populated BOM from measurements-p1.md ───────────────────────────────
+# ─── Pre-populated BOM — new schema (parte/tipo/calidad/esp_mm/L_mm/A_mm/cant) ──
 
 BARE4_MATERIALS_DEFAULT = [
-    {"Subconjunto": "Zócalo",                "Dimensiones": "275x1351mm",   "Material": "AISI 304-L 1.5mm", "kg_ml": 3.4,   "precio_kg": 3600, "total": 12240},
-    {"Subconjunto": "Base inferior",         "Dimensiones": "120x1305mm",   "Material": "AISI 304-L 1.5mm", "kg_ml": 1.73,  "precio_kg": 3600, "total": 6228},
-    {"Subconjunto": "Pletina base",          "Dimensiones": "158x1365mm",   "Material": "AISI 304-L 1.5mm", "kg_ml": 2.4,   "precio_kg": 3600, "total": 8640},
-    {"Subconjunto": "Base",                  "Dimensiones": "228x1350mm",   "Material": "AISI 304-L 1.5mm", "kg_ml": 3.4,   "precio_kg": 3600, "total": 12240},
-    {"Subconjunto": "Tapas laterales",       "Dimensiones": "788x286mm (2)","Material": "AISI 304-L 1.5mm", "kg_ml": 5.3,   "precio_kg": 3600, "total": 19080},
-    {"Subconjunto": "Manto",                 "Dimensiones": "1543x769mm (2)","Material": "AISI 304-L 1.5mm","kg_ml": 25.9,  "precio_kg": 3600, "total": 93240},
-    {"Subconjunto": "Zócalo base",           "Dimensiones": "600x1350mm",   "Material": "AISI 304-L 1.5mm", "kg_ml": 8.188, "precio_kg": 3600, "total": 29477},
-    {"Subconjunto": "Refuerzo lateral",      "Dimensiones": "148x260mm (2)","Material": "AISI 304-L 1.5mm", "kg_ml": 0.72,  "precio_kg": 3600, "total": 2592},
-    {"Subconjunto": "Tapa",                  "Dimensiones": "199x178mm (3)","Material": "AISI 304-L 1.5mm", "kg_ml": 1.14,  "precio_kg": 3600, "total": 4104},
-    {"Subconjunto": "Pletina patín",         "Dimensiones": "120x350mm (2)","Material": "AISI 304-L 1.5mm", "kg_ml": 0.9,   "precio_kg": 3600, "total": 3240},
-    {"Subconjunto": "Caluga",                "Dimensiones": "45x50mm (2)",  "Material": "AISI 304-L 1.5mm", "kg_ml": 0.04,  "precio_kg": 3600, "total": 144},
-    {"Subconjunto": "Pletina manto",         "Dimensiones": "135x3400mm",   "Material": "AISI 304-L 1.5mm", "kg_ml": 5.52,  "precio_kg": 3600, "total": 19872},
-    {"Subconjunto": "Basureros interiores",  "Dimensiones": "740x1156mm (4)","Material": "Acero 430 1mm",   "kg_ml": 27.44, "precio_kg": 3600, "total": 98784},
-    {"Subconjunto": "Basureros base int.",   "Dimensiones": "288x323mm (4)","Material": "Acero 430 1mm",    "kg_ml": 2.96,  "precio_kg": 3600, "total": 10656},
-    {"Subconjunto": "Patines (4)",           "Dimensiones": "ø40x60mm",     "Material": "Varios",           "kg_ml": 4.0,   "precio_kg": 1500, "total": 6000},
-    {"Subconjunto": "Tuercas 3/8",           "Dimensiones": "8 u",          "Material": "Acero Galvanizado","kg_ml": 8.0,   "precio_kg": 94,   "total": 752},
-    {"Subconjunto": "Pomeles 3/8 inox",      "Dimensiones": "2 u",          "Material": "Acero Inoxidable", "kg_ml": 2.0,   "precio_kg": 2600, "total": 5200},
-    {"Subconjunto": "Manillas embutidas",    "Dimensiones": "2 u",          "Material": "Acero Inoxidable", "kg_ml": 2.0,   "precio_kg": 3720, "total": 7440},
-    {"Subconjunto": "Logo",                  "Dimensiones": "1 u",          "Material": "Varios",           "kg_ml": 1.0,   "precio_kg": 3600, "total": 3600},
-]
-
-BARE4_CONSUMABLES_DEFAULT = [
-    {"Producto": "Disco Desbaste Rolden 4.5\"", "Proceso": "pulido",          "Cantidad": 2, "Unidad": "u", "Precio_u": 2500,  "Total": 5000},
-    {"Producto": "Disco de Lija Grano 80",      "Proceso": "pulido",          "Cantidad": 2, "Unidad": "u", "Precio_u": 460,   "Total": 920},
-    {"Producto": "Disco Traslapado",             "Proceso": "pulido",          "Cantidad": 1, "Unidad": "u", "Precio_u": 1681,  "Total": 1681},
-    {"Producto": "Grata Roja",                   "Proceso": "pulido",          "Cantidad": 2, "Unidad": "u", "Precio_u": 5800,  "Total": 11600},
-    {"Producto": "Huaipe",                       "Proceso": "pulido",          "Cantidad": 1, "Unidad": "u", "Precio_u": 3500,  "Total": 3500},
-    {"Producto": "Disco Multifinic",             "Proceso": "pulido",          "Cantidad": 1, "Unidad": "u", "Precio_u": 32400, "Total": 32400},
-    {"Producto": "Traslapos pequeños 50x30",     "Proceso": "pulido",          "Cantidad": 1, "Unidad": "u", "Precio_u": 1100,  "Total": 1100},
-    {"Producto": "Pasta de pulir (pomo)",        "Proceso": "pulido",          "Cantidad": 1, "Unidad": "u", "Precio_u": 3500,  "Total": 3500},
-    {"Producto": "Spray limpiador inox",         "Proceso": "pulido",          "Cantidad": 1, "Unidad": "u", "Precio_u": 8072,  "Total": 8072},
-    {"Producto": "Disco de corte 4 1/2\"",       "Proceso": "armado_trazado",  "Cantidad": 1, "Unidad": "u", "Precio_u": 548,   "Total": 548},
-    {"Producto": "Lija Metal Grano 80",          "Proceso": "pulido",          "Cantidad": 1, "Unidad": "u", "Precio_u": 592,   "Total": 592},
-    {"Producto": "Tungsteno 3/32",               "Proceso": "soldadura",       "Cantidad": 1, "Unidad": "u", "Precio_u": 2790,  "Total": 2790},
-    {"Producto": "Argón",                        "Proceso": "soldadura",       "Cantidad": 256, "Unidad": "L","Precio_u": 7,    "Total": 1897},
+    {"parte": "Zócalo",               "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 1351, "A_mm": 275,  "cant": 1, "simbolos": ""},
+    {"parte": "Base inferior",        "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 1305, "A_mm": 120,  "cant": 1, "simbolos": ""},
+    {"parte": "Pletina base",         "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 1365, "A_mm": 158,  "cant": 1, "simbolos": ""},
+    {"parte": "Base",                 "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 1350, "A_mm": 228,  "cant": 1, "simbolos": ""},
+    {"parte": "Tapas laterales",      "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 788,  "A_mm": 286,  "cant": 2, "simbolos": ""},
+    {"parte": "Manto",                "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 1543, "A_mm": 769,  "cant": 2, "simbolos": ""},
+    {"parte": "Zócalo base",          "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 1350, "A_mm": 600,  "cant": 1, "simbolos": ""},
+    {"parte": "Refuerzo lateral",     "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 260,  "A_mm": 148,  "cant": 2, "simbolos": ""},
+    {"parte": "Tapa",                 "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 199,  "A_mm": 178,  "cant": 3, "simbolos": ""},
+    {"parte": "Pletina patín",        "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 350,  "A_mm": 120,  "cant": 2, "simbolos": ""},
+    {"parte": "Caluga",               "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 50,   "A_mm": 45,   "cant": 2, "simbolos": ""},
+    {"parte": "Pletina manto",        "tipo": "Plancha", "calidad": "304", "esp_mm": 1.5, "L_mm": 3400, "A_mm": 135,  "cant": 1, "simbolos": ""},
+    {"parte": "Basureros interiores", "tipo": "Plancha", "calidad": "430", "esp_mm": 1.0, "L_mm": 1156, "A_mm": 740,  "cant": 4, "simbolos": ""},
+    {"parte": "Basureros base int.",  "tipo": "Plancha", "calidad": "430", "esp_mm": 1.0, "L_mm": 323,  "A_mm": 288,  "cant": 4, "simbolos": ""},
+    {"parte": "Patines (4)",          "tipo": "Macizo",  "calidad": "304", "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 4, "simbolos": "M"},
+    {"parte": "Tuercas 3/8",          "tipo": "Macizo",  "calidad": "304", "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 8, "simbolos": ""},
+    {"parte": "Pomeles 3/8 inox",     "tipo": "Macizo",  "calidad": "304", "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 2, "simbolos": "M"},
+    {"parte": "Manillas embutidas",   "tipo": "Macizo",  "calidad": "304", "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 2, "simbolos": "M"},
+    {"parte": "Logo",                 "tipo": "Macizo",  "calidad": "304", "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 1, "simbolos": ""},
 ]
 
 BAPLA_MATERIALS_DEFAULT = [
-    {"Subconjunto": "", "Dimensiones": "", "Material": "", "kg_ml": 0.0, "precio_kg": 3600, "total": 0},
+    {"parte": "", "tipo": "Plancha", "calidad": "304", "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 1, "simbolos": ""},
 ]
 
 BAPLA_CONSUMABLES_DEFAULT = [
@@ -2558,31 +2542,69 @@ def render_bom_entry(rules, profile_key):
             _cons_skey = f"cons_{profile_key}_{comp}"
             _mat_hkey  = f"h_{_mat_skey}"
             _cons_hkey = f"h_{_cons_skey}"
-            _mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","Cantidad":1.0,"kg_ml":0.0,"precio_kg":3600,"total":0}]
+            # Migrate old schema rows
+            def _cal_migrate(r):
+                if "parte" in r:
+                    return r
+                return {"parte": r.get("Subconjunto","") or r.get("Material",""),
+                        "tipo": "Plancha", "calidad": "304",
+                        "esp_mm": None, "L_mm": None, "A_mm": None,
+                        "cant": 1, "simbolos": ""}
+
+            _mat_edit_cols = ["parte","tipo","calidad","esp_mm","L_mm","A_mm","cant","simbolos"]
+            _mat_init = [_cal_migrate(r) for r in saved_mat] or                         [{"parte":"","tipo":"Plancha","calidad":"304","esp_mm":None,"L_mm":None,"A_mm":None,"cant":1,"simbolos":""}]
             _cons_default = saved_cons or [{"Producto":"","Proceso":"soldadura","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
 
             # Seed state from DB; invalidate when anchor changes
-            _mat_hash = hash(str(_mat_default))
+            _mat_hash = hash(str(_mat_init))
             _cons_hash = hash(str(_cons_default))
-            if st.session_state.get(_mat_hkey) != _mat_hash or _mat_skey not in st.session_state:
-                st.session_state[_mat_skey]  = pd.DataFrame(_mat_default)
+            if st.session_state.get(_mat_hkey) != _mat_hash:
+                st.session_state[_mat_skey]  = pd.DataFrame(_mat_init)
                 st.session_state[_mat_hkey]  = _mat_hash
             if st.session_state.get(_cons_hkey) != _cons_hash or _cons_skey not in st.session_state:
                 st.session_state[_cons_skey] = pd.DataFrame(_cons_default)
                 st.session_state[_cons_hkey] = _cons_hash
 
+            st.markdown('<div class="sec-label">MATERIALES — BOM</div>', unsafe_allow_html=True)
+            st.caption("Parte · Tipo · Calidad · esp/L/A mm · Cant · Símbolos")
+            mat_df = st.data_editor(
+                st.session_state[_mat_skey][_mat_edit_cols],
+                key=f"bomedit_{profile_key}_{comp}",
+                use_container_width=True, num_rows="dynamic", hide_index=True,
+                column_config={
+                    "parte":    st.column_config.TextColumn("Parte", width="medium"),
+                    "tipo":     st.column_config.SelectboxColumn("Tipo", options=["Plancha","Perfil","Tubo","Macizo"], width="small"),
+                    "calidad":  st.column_config.SelectboxColumn("Calidad", options=["304","201","316","430"], width="small"),
+                    "esp_mm":   st.column_config.NumberColumn("esp mm", format="%.1f", step=0.5, width="small"),
+                    "L_mm":     st.column_config.NumberColumn("L mm",   format="%.0f", step=1.0, width="small"),
+                    "A_mm":     st.column_config.NumberColumn("A/Ø mm", format="%.0f", step=1.0, width="small"),
+                    "cant":     st.column_config.NumberColumn("Cant",   format="%d",   step=1,   width="small"),
+                    "simbolos": st.column_config.TextColumn("Símbolos", help="P1 P2 T4 ⊙ S V M EXT", width="small"),
+                },
+            )
+            # Computed display (read-only)
+            _cal_computed = []
+            _cal_mat_total = 0
+            if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
+                try:
+                    from bom_calc import compute_bom as _cal_compute_bom, erp_rows as _cal_erp_rows
+                    _cal_computed = _cal_compute_bom(mat_df.to_dict("records"))
+                    _cal_mat_total = sum(int(r.get("total_clp") or 0) for r in _cal_computed)
+                    _cal_disp = pd.DataFrame([{
+                        "Parte": r.get("parte",""), "SKU": r.get("sku_material","—"),
+                        "kg bruto/u": r.get("kg_bruto",0), "Cant": r.get("cant",1),
+                        "$/kg": r.get("precio_kg",0), "Total $": r.get("total_clp",0),
+                    } for r in _cal_computed])
+                    st.dataframe(_cal_disp, use_container_width=True, hide_index=True,
+                        column_config={
+                            "kg bruto/u": st.column_config.NumberColumn(format="%.4f"),
+                            "$/kg": st.column_config.NumberColumn(format="%.0f"),
+                            "Total $": st.column_config.NumberColumn(format="$ %.0f"),
+                        })
+                except Exception:
+                    pass
+
             with st.form(f"bom_form_{profile_key}_{comp}"):
-                st.markdown('<div class="sec-label">MATERIALES — BOM</div>', unsafe_allow_html=True)
-                mat_df = st.data_editor(
-                    st.session_state[_mat_skey],
-                    use_container_width=True, num_rows="dynamic", hide_index=True,
-                    column_config={
-                        "total":     st.column_config.NumberColumn("Total $",     format="%.0f", step=1, min_value=0),
-                        "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="%.0f", step=1),
-                        "kg_ml":     st.column_config.NumberColumn("kg o ML o u", format="%.4f", step=0.0001),
-                        "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f", step=0.001),
-                    },
-                )
                 st.markdown('<div class="sec-label" style="margin-top:0.6rem;">CONSUMIBLES</div>', unsafe_allow_html=True)
                 cons_df = st.data_editor(
                     st.session_state[_cons_skey],
@@ -2600,9 +2622,8 @@ def render_bom_entry(rules, profile_key):
 
             # Process form submission outside the form context
             if save_clicked:
-                # Use user-entered totals directly — do not auto-compute over them
-                mat_total  = int(mat_df["total"].fillna(0).sum())  if isinstance(mat_df, pd.DataFrame) and "total"  in mat_df.columns else 0
-                cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total"  in cons_df.columns else 0
+                mat_total  = _cal_mat_total
+                cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total" in cons_df.columns else 0
                 total      = mat_total + cons_total
                 _save_bom_to_db(selected_anchor, mat_df, cons_df)
                 # Update universal driver scores + dims in DB from current inputs

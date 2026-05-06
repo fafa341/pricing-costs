@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "description": "Waste factors per cutting/forming operation. Applied as multiplier to net Kg to get gross material ordered. E.g., factor 1.05 = 5% waste — order 1.05 kg to yield 1 kg of finished part.",
+    "last_updated": "2026-05-05",
+    "status": "PLACEHOLDER — all values estimated. MUST validate with Hernán before Phase 2 deployment.",
+    "source": "Engineering estimates based on typical sheet metal shop. Not measured at Dulox.",
+    "validate_with": "Hernán: compare estimated vs actual material usage on 3-5 known products"
+  },
+
+  "operaciones": {
+    "corte_plancha_rectangular": {
+      "factor": 1.05,
+      "descripcion": "Corte rectangular en plancha (guillotina o plasma). Pérdida por kerf + flejes.",
+      "rango_tipico": [1.03, 1.10],
+      "aplica_a": ["Plancha"],
+      "notas": "Sube a 1.10 si la pieza es pequeña y hay muchos cortes por plancha",
+      "validado": false
+    },
+    "corte_plancha_circular": {
+      "factor": 1.22,
+      "descripcion": "Corte circular o tapa redonda en plancha. Pérdida por esquinas de la cuadrícula.",
+      "rango_tipico": [1.18, 1.30],
+      "aplica_a": ["Plancha"],
+      "notas": "Depende del diámetro relativo al ancho de la plancha. Círculo inscrito en cuadrado → factor π/4 ≈ 1.27 teórico.",
+      "validado": false
+    },
+    "cilindrado_manto": {
+      "factor": 1.08,
+      "descripcion": "Plancha cilindrada (manto de basurero, tina, etc.). Pérdida por trim de bordes + empalme de soldadura.",
+      "rango_tipico": [1.05, 1.12],
+      "aplica_a": ["Plancha"],
+      "notas": "Si el cilindrado requiere solapa visible (soldadura a tope vs solape), ajustar al extremo superior.",
+      "validado": false
+    },
+    "plegado": {
+      "factor": 1.05,
+      "descripcion": "Plancha plegada (cajas, tapas con reborde, etc.). Pérdida por deducción de radio de doblez.",
+      "rango_tipico": [1.02, 1.07],
+      "aplica_a": ["Plancha"],
+      "notas": "Para plegados simples (90°) el factor es bajo. Sube con pliegues en ángulo agudo.",
+      "validado": false
+    },
+    "corte_perfil_tubo": {
+      "factor": 1.10,
+      "descripcion": "Corte de perfil cuadrado/rectangular o tubo a medida. Pérdida por cortes de extremo + kerf de sierra.",
+      "rango_tipico": [1.05, 1.15],
+      "aplica_a": ["Perfil", "Tubo"],
+      "notas": "Factor más alto que plancha porque los perfiles vienen en barras de 6m y la última pieza puede ser descarte.",
+      "validado": false
+    },
+    "corte_macizo": {
+      "factor": 1.08,
+      "descripcion": "Corte de barra maciza (macizos de 1/4\", hexagonales).",
+      "rango_tipico": [1.05, 1.12],
+      "aplica_a": ["Macizo"],
+      "notas": "Similar a corte de perfil.",
+      "validado": false
+    }
+  },
+
+  "_application_rules": {
+    "default_if_unknown": 1.05,
+    "note": "If no matching operation found for a part, apply default 1.05 and flag the part with 'waste_factor_assumed: true'.",
+    "do_not_double_apply": "Apply ONE factor per part — the factor for the PRIMARY cutting/forming operation. Do not stack factors.",
+    "cylindrical_parts": "For a manto cilindrado: apply 'cilindrado_manto' (1.08), NOT 'corte_plancha_circular'. The Kg formula already computes the unrolled rectangle area — the waste factor covers trim only.",
+    "validate_path": "Ask Hernán to compare: (net Kg from formula × waste_factor) vs (actual Kg of material pulled from inventory) for 5 known products. Record actual factor and update here."
+  }
+}

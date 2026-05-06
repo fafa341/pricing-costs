@@ -26,6 +26,7 @@ from datetime import datetime
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from db import load_rules, save_rules, get_sb, load_all_products, save_bom as _db_save_bom, log_change
+from bom_calc import compute_bom, erp_rows
 
 # Fallback list — used if PROCESS_RULES.json is unavailable, and as module-level
 # default so PERFILES is always defined before main() updates it dynamically.
@@ -286,71 +287,138 @@ def save_bom(handle: str, mat_rows: list, cons_rows: list):
     load_products.clear()
 
 
+_MAT_EDIT_COLS   = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos"]
+_MAT_TIPO_OPTIONS    = ["Plancha", "Perfil", "Tubo", "Macizo"]
+_MAT_CALIDAD_OPTIONS = ["304", "201", "316", "430"]
+
+def _mat_empty_row() -> dict:
+    return {"parte": "", "tipo": "Plancha", "calidad": "304",
+            "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 1, "simbolos": ""}
+
+def _mat_full_row() -> dict:
+    """Empty row with all keys (editable + computed) for storage."""
+    return {**_mat_empty_row(),
+            "sku_material": "", "kg_neto": 0.0, "waste_factor": 1.05,
+            "kg_bruto": 0.0, "precio_kg": 3600, "total_clp": 0}
+
+def _migrate_mat_row(r: dict) -> dict:
+    """Migrate old-schema rows (Subconjunto/Dimensiones/kg_ml) → new schema."""
+    if "parte" in r:
+        return {**_mat_empty_row(), **{k: r[k] for k in _MAT_EDIT_COLS if k in r}}
+    new = _mat_empty_row()
+    new["parte"] = r.get("Subconjunto", "") or r.get("Material", "")
+    new["esp_mm"] = None  # old schema had no numeric esp
+    return new
+
+def _compute_bom_display(edit_rows: list[dict]) -> tuple[list[dict], int]:
+    """Run bom_calc on edit_rows; return (computed_rows, total_clp)."""
+    computed = compute_bom(edit_rows)
+    total = sum(int(r.get("total_clp") or 0) for r in computed)
+    return computed, total
+
+
 def product_bom_expander(row: dict, key_prefix: str = "bom"):
-    """Inline BOM editor embedded inside a product card."""
+    """
+    Inline BOM editor.
+    FIX: editable and computed columns are SEPARATED.
+    - data_editor only shows editable input columns → no reactive write-back loop
+    - Computed table (kg, sku, total) is rendered BELOW using st.dataframe (read-only)
+    - session_state is initialized ONCE from DB data; data_editor manages its own state
+    - Save button reads data_editor return value directly
+    """
     handle     = row.get("handle", "")
     saved_mat  = json.loads(row.get("bom_materials",  "[]") or "[]")
     saved_cons = json.loads(row.get("bom_consumables","[]") or "[]")
 
-    mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","Cantidad":1.0,"kg_ml":0.0,"precio_kg":3600,"total":0}]
-    cons_default = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
+    mat_init  = [_migrate_mat_row(r) for r in saved_mat] or [_mat_empty_row()]
+    cons_init = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
 
-    prefix = f"{key_prefix}_{handle}"
+    prefix    = f"{key_prefix}_{handle}"
+    _mat_ikey = f"mat_init_{prefix}"
+    _mat_ihsh = f"mat_ihsh_{prefix}"
+    _con_ikey = f"con_init_{prefix}"
+    _con_ihsh = f"con_ihsh_{prefix}"
 
-    # Seed session state once; invalidate when source data changes (e.g. after save)
-    _mat_skey  = f"df_bomedit_mat_{prefix}"
-    _mat_hkey  = f"hash_bomedit_mat_{prefix}"
-    _cons_skey = f"df_bomedit_cons_{prefix}"
-    _cons_hkey = f"hash_bomedit_cons_{prefix}"
-    _mat_hash  = hash(str(mat_default))
-    _cons_hash = hash(str(cons_default))
-    if st.session_state.get(_mat_hkey) != _mat_hash or _mat_skey not in st.session_state:
-        st.session_state[_mat_skey] = pd.DataFrame(mat_default)
-        st.session_state[_mat_hkey] = _mat_hash
-    if st.session_state.get(_cons_hkey) != _cons_hash or _cons_skey not in st.session_state:
-        st.session_state[_cons_skey] = pd.DataFrame(cons_default)
-        st.session_state[_cons_hkey] = _cons_hash
+    # Seed ONCE — only re-seed when DB data changes (after a save)
+    mat_hash  = hash(str(mat_init))
+    cons_hash = hash(str(cons_init))
+    if st.session_state.get(_mat_ihsh) != mat_hash:
+        st.session_state[_mat_ikey] = pd.DataFrame(mat_init)
+        st.session_state[_mat_ihsh] = mat_hash
+    if st.session_state.get(_con_ihsh) != cons_hash:
+        st.session_state[_con_ikey] = pd.DataFrame(cons_init)
+        st.session_state[_con_ihsh] = cons_hash
 
-    st.markdown('<div class="dulox-section-label" style="margin-bottom:0.35rem;">MATERIALES</div>', unsafe_allow_html=True)
+    # ── Materiales — editable columns only ───────────────────────────────────
+    st.markdown('<div class="dulox-section-label" style="margin-bottom:0.35rem;">MATERIALES (BOM)</div>', unsafe_allow_html=True)
+    st.caption("Parte · Tipo · Calidad · esp / L / A (mm) · Cant · Símbolos → Kg y costos calculados abajo")
+
     mat_df = st.data_editor(
-        st.session_state[_mat_skey],
+        st.session_state[_mat_ikey][_MAT_EDIT_COLS],
         key=f"bomedit_mat_{prefix}",
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "total":     st.column_config.NumberColumn("Total $",     format="%.0f", disabled=True),
-            "precio_kg": st.column_config.NumberColumn("$/kg o $/u",  format="%.0f", step=1),
-            "kg_ml":     st.column_config.NumberColumn("kg / ML / u", format="%.4f",   step=0.0001),
-            "Cantidad":  st.column_config.NumberColumn("Cant. mat.",   format="%.3f",   step=0.001),
-        }
+            "parte":    st.column_config.TextColumn("Parte", width="medium"),
+            "tipo":     st.column_config.SelectboxColumn("Tipo", options=_MAT_TIPO_OPTIONS, width="small"),
+            "calidad":  st.column_config.SelectboxColumn("Calidad", options=_MAT_CALIDAD_OPTIONS, width="small"),
+            "esp_mm":   st.column_config.NumberColumn("esp mm", format="%.1f", step=0.5, min_value=0.1, width="small"),
+            "L_mm":     st.column_config.NumberColumn("L mm", format="%.0f", step=1.0, width="small"),
+            "A_mm":     st.column_config.NumberColumn("A / Ø mm", format="%.0f", step=1.0, width="small"),
+            "cant":     st.column_config.NumberColumn("Cant", format="%d", step=1, min_value=1, width="small"),
+            "simbolos": st.column_config.TextColumn("Símbolos", help="P1 P2 T4 ⊙ S V M EXT", width="small"),
+        },
     )
-    st.session_state[_mat_skey] = mat_df  # write back so edits survive rerun
+    # data_editor manages its own state — do NOT write mat_df back to session_state here
+    # We only read it for display and for the save button
 
-    st.markdown('<div class="dulox-section-label" style="margin:0.5rem 0 0.35rem 0;">CONSUMIBLES</div>', unsafe_allow_html=True)
+    # ── Computed summary — rendered from return value, not from session_state ─
+    if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
+        computed, mat_total = _compute_bom_display(mat_df.to_dict("records"))
+        comp_df = pd.DataFrame([{
+            "Parte":        r.get("parte", ""),
+            "SKU":          r.get("sku_material", "—"),
+            "kg neto/u":    r.get("kg_neto", 0),
+            "Waste ×":      r.get("waste_factor", 1.05),
+            "kg bruto/u":   r.get("kg_bruto", 0),
+            "Cant":         r.get("cant", 1),
+            "$/kg":         r.get("precio_kg", 0),
+            "Total $":      r.get("total_clp", 0),
+        } for r in computed])
+        st.dataframe(comp_df, use_container_width=True, hide_index=True,
+            column_config={
+                "kg neto/u":  st.column_config.NumberColumn(format="%.4f"),
+                "Waste ×":    st.column_config.NumberColumn(format="%.2f"),
+                "kg bruto/u": st.column_config.NumberColumn(format="%.4f"),
+                "$/kg":       st.column_config.NumberColumn(format="%.0f"),
+                "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+            })
+        # Warnings
+        warns = [f"**{r.get('parte','?')}:** {w}" for r in computed for w in (r.get("warnings") or [])]
+        if warns:
+            st.warning("\n".join(f"- {w}" for w in warns))
+    else:
+        mat_total = 0
+        computed  = []
+
+    # ── Consumibles ───────────────────────────────────────────────────────────
+    st.markdown('<div class="dulox-section-label" style="margin:0.6rem 0 0.3rem 0;">CONSUMIBLES</div>', unsafe_allow_html=True)
     cons_df = st.data_editor(
-        st.session_state[_cons_skey],
+        st.session_state[_con_ikey],
         key=f"bomedit_cons_{prefix}",
         use_container_width=True,
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "Total":    st.column_config.NumberColumn("Total $",  format="%.0f", step=1),
+            "Total":    st.column_config.NumberColumn("Total $",   format="%.0f", step=1),
             "Precio_u": st.column_config.NumberColumn("Precio u.", format="%.0f", step=1),
-            "Cantidad": st.column_config.NumberColumn("Cant.",     format="%.3f",   step=0.001),
-        }
+            "Cantidad": st.column_config.NumberColumn("Cant.",     format="%.3f", step=0.001),
+        },
     )
-    st.session_state[_cons_skey] = cons_df  # write back so edits survive rerun
+    cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total" in cons_df.columns else 0
 
-    # Compute mat total = Cantidad × kg_ml × precio_kg
-    if isinstance(mat_df, pd.DataFrame) and not mat_df.empty and "kg_ml" in mat_df.columns:
-        _qty = mat_df.get("Cantidad", pd.Series([1.0]*len(mat_df))).fillna(1.0)
-        mat_df = mat_df.copy()
-        mat_df["total"] = (_qty * mat_df["kg_ml"].fillna(0) * mat_df["precio_kg"].fillna(0)).round().astype(int)
-        st.session_state[_mat_skey] = mat_df
-    mat_total  = int(mat_df["total"].fillna(0).sum())  if isinstance(mat_df, pd.DataFrame) and "total"  in mat_df.columns else 0
-    cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total"  in cons_df.columns else 0
-
+    # ── Totals + save ─────────────────────────────────────────────────────────
     col_cost, col_btn = st.columns([3, 1])
     col_cost.markdown(
         f'<div style="font-size:0.88rem;padding:0.3rem 0;">'
@@ -361,15 +429,34 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
         f'<span style="color:var(--text-dim);"> · Total: </span>'
         f'<span style="color:var(--green);font-weight:700;">${mat_total+cons_total:,}</span>'
         f'</div>',
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
     if col_btn.button("💾 Guardar BOM", key=f"savebom_{prefix}", type="primary"):
-        save_bom(
-            handle,
-            mat_df.to_dict("records") if isinstance(mat_df, pd.DataFrame) else mat_default,
-            cons_df.to_dict("records") if isinstance(cons_df, pd.DataFrame) else cons_default,
+        # Merge computed values back into rows before saving
+        save_rows = computed if computed else (
+            mat_df.to_dict("records") if isinstance(mat_df, pd.DataFrame) else mat_init
         )
+        cons_rows = cons_df.to_dict("records") if isinstance(cons_df, pd.DataFrame) else cons_init
+        save_bom(handle, save_rows, cons_rows)
+        # Bust init hash so next render re-seeds from DB
+        st.session_state.pop(_mat_ihsh, None)
+        st.session_state.pop(_con_ihsh, None)
         st.success(f"✅ BOM guardado — {handle}")
+
+    # ── ERP preview ───────────────────────────────────────────────────────────
+    if computed and mat_total > 0:
+        with st.expander("📋 Vista previa ERP — Artículos a Consumir"):
+            st.caption("Una fila por SKU (partes con mismo material se agrupan — sheet optimization).")
+            erp = erp_rows(computed)
+            if erp:
+                st.dataframe(pd.DataFrame(erp), use_container_width=True, hide_index=True,
+                    column_config={
+                        "sku_material":   st.column_config.TextColumn("Artículo Consumo"),
+                        "total_kg_bruto": st.column_config.NumberColumn("Cantidad (kg)", format="%.3f"),
+                        "precio_kg":      st.column_config.NumberColumn("$/kg", format="%.0f"),
+                        "total_clp":      st.column_config.NumberColumn("Total $", format="$ %.0f"),
+                        "partes":         st.column_config.TextColumn("Partes"),
+                    })
 
 @st.cache_data(ttl=5)
 def load_history(handle):
@@ -1543,6 +1630,7 @@ def main():
             "📋 Por Perfil",
             "🔎 Buscar Producto",
             "📊 Dashboard",
+            "📦 Auditoría de Producto",
             "➕ Nuevo Perfil",
             "📥 Inputs (C/X/Procesos/Anclas)",
             "⚙️ Costos de Proceso",
@@ -1582,6 +1670,10 @@ def main():
 
     elif page == "📊 Dashboard":
         page_dashboard(df)
+
+    elif page == "📦 Auditoría de Producto":
+        from _pages.product_audit import main as product_audit_main
+        product_audit_main()
 
     elif page == "➕ Nuevo Perfil":
         page_nuevo_perfil(rules)

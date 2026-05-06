@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from db import load_rules, get_sb, save_bom as _save_bom_db
+from bom_calc import compute_bom, erp_rows
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
 
@@ -274,14 +275,25 @@ def _build_system_consumables(
 
 
 def _scale_mat_rows(anchor_rows: list, factor: float) -> list:
-    """Scale anchor material rows by factor_escala."""
+    """Scale anchor material rows by factor_escala. Supports both old and new schema."""
     out = []
     for r in anchor_rows:
         row = dict(r)
-        t   = _nan(row.get("total"))
-        kg  = _nan(row.get("kg_ml"))
-        row["total"]  = round(t  * factor)
-        row["kg_ml"]  = round(kg * factor, 4)
+        # New schema: scale L_mm and A_mm, then recompute kg via bom_calc
+        if "L_mm" in row or "parte" in row:
+            if row.get("L_mm"):
+                row["L_mm"] = round(_nan(row.get("L_mm", 0)) * factor, 2)
+            if row.get("A_mm"):
+                row["A_mm"] = round(_nan(row.get("A_mm", 0)) * factor, 2)
+            # Recompute kg + cost after scaling
+            computed = compute_bom([row])
+            row = computed[0] if computed else row
+        else:
+            # Old schema fallback: scale total + kg_ml directly
+            t   = _nan(row.get("total"))
+            kg  = _nan(row.get("kg_ml"))
+            row["total"]  = round(t  * factor)
+            row["kg_ml"]  = round(kg * factor, 4)
         out.append(row)
     return out
 
@@ -671,53 +683,91 @@ def render_bom_extrapolated(
     return mat_total, cons_total
 
 
+_AUDIT_MAT_EDIT_COLS = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos"]
+_AUDIT_MAT_TIPO  = ["Plancha", "Perfil", "Tubo", "Macizo"]
+_AUDIT_MAT_CAL   = ["304", "201", "316", "430"]
+
+def _audit_mat_empty():
+    return {"parte": "", "tipo": "Plancha", "calidad": "304",
+            "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 1, "simbolos": ""}
+
+def _audit_migrate(r: dict) -> dict:
+    if "parte" in r:
+        return {**_audit_mat_empty(), **{k: r[k] for k in _AUDIT_MAT_EDIT_COLS if k in r}}
+    new = _audit_mat_empty()
+    new["parte"] = r.get("Subconjunto", "") or r.get("Material", "")
+    return new
+
+
 def render_bom_editable(product: dict, system_cons: list):
     """
     Editable BOM for anchor/editado products.
-    Consumables are seeded from the system algorithm (process catalog × per-process levels).
-    If the product has no saved consumables, system_cons is used as the initial data.
-    A 'Reset al template' button resets to system_cons at any time.
+    Uses new schema: parte/tipo/calidad/esp_mm/L_mm/A_mm/cant/simbolos.
+    Computed columns shown as read-only table below editor (no write-back loop).
     """
     handle    = product["handle"]
     saved_mat = _pj(product.get("bom_materials"),  [])
     saved_con = _pj(product.get("bom_consumables"), [])
 
-    # ── Materials ────────────────────────────────────────────────────────────
-    mat_def = saved_mat or [{
-        "Subconjunto": "", "Dimensiones": "", "Material": "",
-        "Cantidad": 1.0, "kg_ml": 0.0, "precio_kg": 3600, "total": 0
-    }]
-    ms, mh = f"mat_{handle}", f"mh_{handle}"
-    mhash  = hash(str(mat_def))
-    if st.session_state.get(mh) != mhash or ms not in st.session_state:
-        st.session_state[ms] = pd.DataFrame(mat_def)
+    # ── Materials ─────────────────────────────────────────────────────────────
+    mat_init = [_audit_migrate(r) for r in saved_mat] or [_audit_mat_empty()]
+    ms, mh = f"aud_mat_{handle}", f"aud_mh_{handle}"
+    mhash  = hash(str(mat_init))
+    if st.session_state.get(mh) != mhash:
+        st.session_state[ms] = pd.DataFrame(mat_init)
         st.session_state[mh] = mhash
 
-    mat_total = int(sum(_nan(r.get("total")) for r in saved_mat))
+    st.markdown('<div class="sec-label">MATERIALES</div>', unsafe_allow_html=True)
+    st.caption("Completar: Parte · Tipo · Calidad · esp/L/A mm · Cant · Símbolos")
 
-    with st.form(f"matf_{handle}"):
-        st.markdown(
-            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">'
-            f'<div class="sec-label">MATERIALES — {len(saved_mat)} ítems</div>'
-            f'<div class="num-med" style="color:#3fb950;">{_clp(mat_total)}</div></div>',
-            unsafe_allow_html=True
-        )
-        edited_mat = st.data_editor(
-            st.session_state[ms], use_container_width=True, num_rows="dynamic", hide_index=True,
+    edited_mat = st.data_editor(
+        st.session_state[ms][_AUDIT_MAT_EDIT_COLS],
+        key=f"aud_bomedit_{handle}",
+        use_container_width=True, num_rows="dynamic", hide_index=True,
+        column_config={
+            "parte":    st.column_config.TextColumn("Parte", width="medium"),
+            "tipo":     st.column_config.SelectboxColumn("Tipo", options=_AUDIT_MAT_TIPO, width="small"),
+            "calidad":  st.column_config.SelectboxColumn("Calidad", options=_AUDIT_MAT_CAL, width="small"),
+            "esp_mm":   st.column_config.NumberColumn("esp mm", format="%.1f", step=0.5, width="small"),
+            "L_mm":     st.column_config.NumberColumn("L mm",   format="%.0f", step=1.0, width="small"),
+            "A_mm":     st.column_config.NumberColumn("A/Ø mm", format="%.0f", step=1.0, width="small"),
+            "cant":     st.column_config.NumberColumn("Cant",   format="%d",   step=1,   width="small"),
+            "simbolos": st.column_config.TextColumn("Símbolos", help="P1 P2 T4 ⊙ S V M EXT", width="small"),
+        },
+    )
+
+    # Computed display (read-only — no write-back loop)
+    computed = []
+    mat_total = 0
+    if isinstance(edited_mat, pd.DataFrame) and not edited_mat.empty:
+        computed = compute_bom(edited_mat.to_dict("records"))
+        mat_total = sum(int(r.get("total_clp") or 0) for r in computed)
+        comp_display = pd.DataFrame([{
+            "Parte": r.get("parte",""), "SKU": r.get("sku_material","—"),
+            "kg bruto/u": r.get("kg_bruto", 0), "Cant": r.get("cant",1),
+            "$/kg": r.get("precio_kg",0), "Total $": r.get("total_clp",0),
+        } for r in computed])
+        st.dataframe(comp_display, use_container_width=True, hide_index=True,
             column_config={
-                "total":     st.column_config.NumberColumn("Total $",    format="%.0f", step=1),
-                "precio_kg": st.column_config.NumberColumn("$/kg o $/u", format="%.0f", step=1),
-                "kg_ml":     st.column_config.NumberColumn("kg/ML/u",    format="%.4f", step=0.0001),
-                "Cantidad":  st.column_config.NumberColumn("Cant.",       format="%.3f", step=0.001),
-            }
-        )
-        sm = st.form_submit_button("💾 Guardar materiales", use_container_width=True)
+                "kg bruto/u": st.column_config.NumberColumn(format="%.4f"),
+                "$/kg":       st.column_config.NumberColumn(format="%.0f"),
+                "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+            })
 
-    if sm:
-        st.session_state[ms] = edited_mat
-        _save_bom_db(handle, edited_mat.to_dict("records"), saved_con)
+    col_tot, col_save = st.columns([3,1])
+    col_tot.markdown(
+        f'<div style="font-size:0.85rem;padding:0.3rem 0;">'
+        f'<span style="color:#768390;">Materiales: </span>'
+        f'<span style="color:#3fb950;font-weight:700;">{_clp(mat_total)}</span></div>',
+        unsafe_allow_html=True
+    )
+    if col_save.button("💾 Guardar materiales", key=f"aud_savmat_{handle}", type="primary"):
+        save_rows = computed if computed else (
+            edited_mat.to_dict("records") if isinstance(edited_mat, pd.DataFrame) else mat_init
+        )
+        _save_bom_db(handle, save_rows, saved_con)
         _all_products.clear(); _get_product.clear()
-        st.session_state.pop(ms, None); st.session_state.pop(mh, None)
+        st.session_state.pop(mh, None)  # bust hash so re-seeds from DB
         st.success("✅ Materiales guardados"); st.rerun()
 
     # ── Consumables (seeded from system algorithm) ────────────────────────────
