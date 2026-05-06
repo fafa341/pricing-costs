@@ -19,7 +19,7 @@ from pathlib import Path
 from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "core"))
 from db import load_rules, save_rules, load_profile_products as _load_profile_products_raw, save_product_batch, save_anchor as _db_save_anchor, get_sb
 
 # ─── CSS (dark, matches review.py) ────────────────────────────────────────────

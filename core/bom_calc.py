@@ -37,8 +37,8 @@ from pathlib import Path
 from typing import Optional
 
 ROOT            = Path(__file__).resolve().parent.parent
-INVENTORY_FILE  = ROOT / "dataset" / "inventory_map.json"
-WASTE_FILE      = ROOT / "dataset" / "waste_factors.json"
+INVENTORY_FILE  = ROOT / "data" / "inventory_map.json"
+WASTE_FILE      = ROOT / "data" / "waste_factors.json"
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 

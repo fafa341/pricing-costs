@@ -21,7 +21,7 @@ from pathlib import Path
 from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "core"))
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
 

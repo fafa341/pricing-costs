@@ -18,7 +18,7 @@ import requests
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DB   = ROOT / "dataset" / "products.db"
+DB   = ROOT / "data" / "products.db"
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 

@@ -26,9 +26,9 @@ from pathlib import Path
 from datetime import date, datetime
 
 ROOT               = Path(__file__).resolve().parent.parent.parent
-CHUNKS_PATH        = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
-MEASUREMENTS_PATH  = ROOT / "files-process" / "process-measurements" / "measurements-p2.md"
-sys.path.insert(0, str(ROOT / "scripts"))
+CHUNKS_PATH        = ROOT / "docs" / "calibration" / "process-measurements" / "knowledge-chunks.jsonl"
+MEASUREMENTS_PATH  = ROOT / "docs" / "calibration" / "process-measurements" / "measurements-p2.md"
+sys.path.insert(0, str(ROOT / "core"))
 from db import (load_rules, save_rules, get_sb,
                 load_profile_products as _load_profile_raw,
                 save_bom as _save_bom_db,

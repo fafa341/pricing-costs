@@ -37,8 +37,8 @@ from pathlib import Path
 from datetime import datetime
 
 ROOT         = Path(__file__).resolve().parent.parent
-DB           = ROOT / "dataset" / "products.db"
-RULES_FILE   = ROOT / "files-process" / "PROCESS_RULES.json"
+DB           = ROOT / "data" / "products.db"
+RULES_FILE   = ROOT / "data" / "PROCESS_RULES.json"
 
 # ─── Load rules ───────────────────────────────────────────────────────────────
 

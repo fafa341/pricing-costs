@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "core"))
 
 # ─── Credentials ──────────────────────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ def load_rules(sb) -> dict:
             return r.data["value"]
     except Exception:
         pass
-    rules_path = ROOT / "files-process" / "PROCESS_RULES.json"
+    rules_path = ROOT / "data" / "PROCESS_RULES.json"
     if rules_path.exists():
         print("  PROCESS_RULES loaded from local JSON (fallback)")
         return json.loads(rules_path.read_text(encoding="utf-8"))
@@ -511,7 +511,7 @@ def main():
     print(f"  {len(val_df)} BOM products in table")
     print(f"  {len(comparable)} non-anchor products with both extrap + real cost (comparable)")
 
-    out_val = ROOT / "dataset" / "extrapolation_validation.csv"
+    out_val = ROOT / "data" / "extrapolation_validation.csv"
     val_df.to_csv(out_val, index=False, encoding="utf-8-sig")
     print(f"  → {out_val.relative_to(ROOT)}")
 
@@ -522,7 +522,7 @@ def main():
     n_prods = decomp_df["handle"].nunique() if not decomp_df.empty else 0
     print(f"  {len(decomp_df)} line comparisons across {n_prods} non-anchor products")
 
-    out_decomp = ROOT / "dataset" / "material_decomposition.csv"
+    out_decomp = ROOT / "data" / "material_decomposition.csv"
     decomp_df.to_csv(out_decomp, index=False, encoding="utf-8-sig")
     print(f"  → {out_decomp.relative_to(ROOT)}")
 
@@ -531,7 +531,7 @@ def main():
     lin_rows = build_linearity_rows(val_df)
     lin_df   = pd.DataFrame(lin_rows)
 
-    out_lin = ROOT / "dataset" / "linearity_report.csv"
+    out_lin = ROOT / "data" / "linearity_report.csv"
     lin_df.to_csv(out_lin, index=False, encoding="utf-8-sig")
     print(f"  → {out_lin.relative_to(ROOT)}")
 

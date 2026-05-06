@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-MEASUREMENTS_PATH = ROOT / "files-process" / "process-measurements" / "measurements-p2.md"
+MEASUREMENTS_PATH = ROOT / "docs" / "calibration" / "process-measurements" / "measurements-p2.md"
 
 
 def _price(s: str) -> float:

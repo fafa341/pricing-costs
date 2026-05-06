@@ -24,7 +24,7 @@ from PIL import Image, ImageDraw, ImageFont
 import anthropic
 
 ROOT       = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "core"))
 from db import load_rules, save_rules, get_sb, search_products, get_product, save_bom as _db_save_bom, handle_exists, log_change
 
 MODEL = "claude-opus-4-5"
@@ -208,7 +208,7 @@ def _load_rag_context(rules: dict, perfil_hint: str | None = None) -> str:
     lines = []
 
     # ── Verified knowledge chunks ──────────────────────────────────────────────
-    chunks_path = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
+    chunks_path = ROOT / "docs" / "calibration" / "process-measurements" / "knowledge-chunks.jsonl"
     if chunks_path.exists():
         raw = [json.loads(l) for l in chunks_path.read_text(encoding="utf-8").splitlines() if l.strip()]
         # verified = measured or explicitly flagged

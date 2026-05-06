@@ -21,8 +21,8 @@ from pathlib import Path
 from datetime import datetime
 
 ROOT   = Path(__file__).resolve().parent.parent
-CSV    = ROOT / "dataset" / "Productos_Clasificaciones.csv"
-DB     = ROOT / "dataset" / "products.db"
+CSV    = ROOT / "data" / "Productos_Clasificaciones.csv"
+DB     = ROOT / "data" / "products.db"
 
 # ─── Driver computation ───────────────────────────────────────────────────────
 
@@ -220,7 +220,7 @@ def migrate_sync(conn, fab):
 def export_csv(conn):
     """Export current DB state back to CSV (for git / Excel compatibility)."""
     df = pd.read_sql("SELECT * FROM products ORDER BY perfil_proceso, complejidad, handle", conn)
-    out = ROOT / "dataset" / "Productos_Clasificaciones_reviewed.csv"
+    out = ROOT / "data" / "Productos_Clasificaciones_reviewed.csv"
     df.to_csv(out, index=False)
     print(f"✅ Exported {len(df)} products → {out.name}")
 

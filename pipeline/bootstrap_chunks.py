@@ -31,9 +31,9 @@ from datetime import date
 from pathlib import Path
 
 ROOT         = Path(__file__).resolve().parent.parent
-RULES_PATH   = ROOT / "files-process" / "PROCESS_RULES.json"
+RULES_PATH   = ROOT / "data" / "PROCESS_RULES.json"
 SEMANTIC_PATH = ROOT / "files-process" / "semantic_mappings.json"
-CHUNKS_PATH  = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
+CHUNKS_PATH  = ROOT / "docs" / "calibration" / "process-measurements" / "knowledge-chunks.jsonl"
 
 
 def load_rules() -> dict:

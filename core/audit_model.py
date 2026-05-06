@@ -26,11 +26,11 @@ from datetime import date
 from scipy.stats import spearmanr, f_oneway, mannwhitneyu
 
 ROOT       = Path(__file__).resolve().parent.parent
-DB         = ROOT / "dataset" / "products.db"
-CHUNKS     = ROOT / "files-process" / "process-measurements" / "knowledge-chunks.jsonl"
+DB         = ROOT / "data" / "products.db"
+CHUNKS     = ROOT / "docs" / "calibration" / "process-measurements" / "knowledge-chunks.jsonl"
 AUDIT_LOG  = ROOT / "files-process" / "process-measurements" / "AUDIT_LOG.md"
 AUDIT_DIR  = ROOT / "files-process" / "process-measurements" / "audit-reports"
-RULES_FILE = ROOT / "files-process" / "PROCESS_RULES.json"
+RULES_FILE = ROOT / "data" / "PROCESS_RULES.json"
 
 # ─── Load driver thresholds from PROCESS_RULES.json ───────────────────────────
 # Fallback constants are used only if the file is missing (offline/dev).
