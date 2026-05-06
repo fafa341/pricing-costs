@@ -829,7 +829,8 @@ def render_bom_editable(product: dict, system_cons: list):
     PROCS = sorted({
         "laser", "corte_manual", "armado_trazado", "plegado", "cilindrado",
         "soldadura", "pulido", "qc", "grabado_laser", "refrigeracion", "pintura",
-    } | {r.get("Proceso", "") for r in active_con if r.get("Proceso")})
+    } | {str(r.get("Proceso", "")) for r in active_con
+         if r.get("Proceso") and isinstance(r.get("Proceso"), str)})
 
     cs, ch = f"con_{handle}", f"ch_{handle}"
     chash  = hash(str(active_con))
