@@ -25,6 +25,7 @@ from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "core"))
+sys.path.insert(0, str(ROOT / "app" / "pages"))
 from db import load_rules, save_rules, get_sb, load_all_products, save_bom as _db_save_bom, log_change
 from bom_calc import compute_bom, erp_rows
 
@@ -1625,7 +1626,7 @@ def main():
 
         st.divider()
         st.markdown("### 🗂️ Navegación")
-        page = st.radio("", key="nav_page", options=[
+        page = st.radio("Navegación", key="nav_page", label_visibility="collapsed", options=[
             "🔍 Revisar Candidatos",
             "📋 Por Perfil",
             "🔎 Buscar Producto",
@@ -1672,30 +1673,30 @@ def main():
         page_dashboard(df)
 
     elif page == "📦 Auditoría de Producto":
-        from _pages.product_audit import main as product_audit_main
+        from product_audit import main as product_audit_main
         product_audit_main()
 
     elif page == "➕ Nuevo Perfil":
         page_nuevo_perfil(rules)
 
     elif page == "📥 Inputs (C/X/Procesos/Anclas)":
-        from _pages.data_input import main as data_input_main
+        from data_input import main as data_input_main
         data_input_main()
 
     elif page == "⚙️ Costos de Proceso":
-        from _pages.process_costs import main as process_costs_main
+        from process_costs import main as process_costs_main
         process_costs_main()
 
     elif page == "🎯 Calibración":
-        from _pages.calibration import main as calibration_main
+        from calibration import main as calibration_main
         calibration_main()
 
     elif page == "🖼️ Analizador de Planos":
-        from _pages.drawing_analyzer import main as drawing_analyzer_main
+        from drawing_analyzer import main as drawing_analyzer_main
         drawing_analyzer_main()
 
     elif page == "➕ Ingreso de Producto":
-        from _pages.product_intake import main as product_intake_main
+        from product_intake import main as product_intake_main
         product_intake_main()
 
 
