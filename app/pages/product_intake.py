@@ -1029,7 +1029,7 @@ def main():
                 if base_row:
                     bc1, bc2, bc3, bc4 = st.columns(4)
                     if base_row.get("image_url"):
-                        bc1.image(base_row["image_url"], width='stretch')
+                        bc1.markdown(f'<img src="{base_row["image_url"]}" style="width:100%;border-radius:4px;">', unsafe_allow_html=True)
                     bc2.metric("Perfil", base_row.get("perfil_proceso","—"))
                     bc3.metric("Complejidad", base_row.get("complejidad","—"))
                     bc4.metric("G/D", f"{base_row.get('G','—')}/{base_row.get('D','—')}")
@@ -1160,7 +1160,7 @@ def main():
         ic, fc = st.columns([1, 3])
         with ic:
             if row_b.get("image_url"):
-                st.image(row_b["image_url"], width='stretch')
+                st.markdown(f'<img src="{row_b["image_url"]}" style="width:100%;border-radius:4px;">', unsafe_allow_html=True)
         with fc:
             is_anchor = bool(row_b.get("is_anchor"))
             st.markdown(

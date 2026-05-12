@@ -346,7 +346,7 @@ def render_header(product: dict, source: str, anchor_handle: str | None, factor:
     label, badge_cls, _ = SOURCE_LABELS[source]
     c1, c2 = st.columns([1, 5])
     if img:
-        c1.image(img, width=100)
+        c1.markdown(f'<img src="{img}" style="width:100px;border-radius:4px;">', unsafe_allow_html=True)
     factor_str = f"factor_escala = {factor:.3f}×" if factor else ""
     anchor_str = f" · ancla: <code style='color:#3fb950;'>{anchor_handle}</code>" if (anchor_handle and source != "anchor") else ""
     c2.markdown(

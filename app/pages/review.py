@@ -731,7 +731,10 @@ def product_card(row, reviewer_key="reviewer"):
     with img_col:
         img_url = get_product_image(row if isinstance(row, dict) else row.to_dict())
         if img_url:
-            st.image(img_url, width='stretch')
+            st.markdown(
+                f'<img src="{img_url}" style="width:100%;border-radius:6px;">',
+                unsafe_allow_html=True
+            )
         else:
             st.markdown(
                 '<div style="height:100px;display:flex;align-items:center;'
@@ -869,7 +872,10 @@ def candidate_context_card(c, df, reviewer_key, index=0):
     with img_col:
         img_url = get_product_image(row)
         if img_url:
-            st.image(img_url, width='stretch')
+            st.markdown(
+                f'<img src="{img_url}" style="width:100%;border-radius:4px;">',
+                unsafe_allow_html=True
+            )
         else:
             st.markdown(
                 '<div style="height:72px;display:flex;align-items:center;justify-content:center;'
