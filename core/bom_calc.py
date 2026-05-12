@@ -27,8 +27,9 @@ Waste factor selection (deterministic from tipo + simbolos — no manual input n
   Macizo                            → corte_macizo
   Unknown                           → default 1.05, flagged
 
-Density constant: 7.93 g/cm³ = 0.00000793 kg/mm³ (AISI 304).
-                  Use 7.80 g/cm³ for AISI 201 if confirmed with Hernán.
+Density constant: 8 kg/m² per mm espesor = 0.000008 kg/mm³ (all grades).
+                  Empirical: 1mm sheet → ×8 kg/m², 2mm → ×16 kg/m². Proportionate for other thicknesses.
+                  Validated against MP0001 (1mm) and MP0002 (1.5mm) inventory data.
 """
 
 import json
@@ -42,9 +43,9 @@ WASTE_FILE      = ROOT / "data" / "waste_factors.json"
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-DENSITY_304  = 0.00000793   # kg/mm³  (AISI 304 / 316)
-DENSITY_201  = 0.00000780   # kg/mm³  (AISI 201 — provisional, confirm with Hernán)
-DENSITY_430  = 0.00000780   # kg/mm³  (AISI 430 — provisional)
+DENSITY_304  = 0.000008     # kg/mm³  (AISI 304 / 316) — empirical: 1mm=×8, 2mm=×16 kg/m²
+DENSITY_201  = 0.000008     # kg/mm³  (AISI 201 — same empirical rate as 304)
+DENSITY_430  = 0.000008     # kg/mm³  (AISI 430 — same empirical rate as 304)
 
 DEFAULT_CALIDAD       = "304"
 DEFAULT_WASTE_FACTOR  = 1.05
