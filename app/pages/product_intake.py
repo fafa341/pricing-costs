@@ -617,11 +617,11 @@ def _upload_and_extract(rules: dict, tab_key: str) -> tuple[bytes | None, str, d
         if extraction:
             try:
                 annotated = render_dimension_overlay(image_bytes, extraction)
-                st.image(annotated, use_container_width=True, caption=filename)
+                st.image(annotated, width='stretch', caption=filename)
             except Exception:
-                st.image(image_bytes, use_container_width=True, caption=filename)
+                st.image(image_bytes, width='stretch', caption=filename)
         else:
-            st.image(image_bytes, use_container_width=True, caption=filename)
+            st.image(image_bytes, width='stretch', caption=filename)
 
     with col_ctrl:
         if extraction is None:
@@ -1029,7 +1029,7 @@ def main():
                 if base_row:
                     bc1, bc2, bc3, bc4 = st.columns(4)
                     if base_row.get("image_url"):
-                        bc1.image(base_row["image_url"], use_container_width=True)
+                        bc1.image(base_row["image_url"], width='stretch')
                     bc2.metric("Perfil", base_row.get("perfil_proceso","—"))
                     bc3.metric("Complejidad", base_row.get("complejidad","—"))
                     bc4.metric("G/D", f"{base_row.get('G','—')}/{base_row.get('D','—')}")
@@ -1160,7 +1160,7 @@ def main():
         ic, fc = st.columns([1, 3])
         with ic:
             if row_b.get("image_url"):
-                st.image(row_b["image_url"], use_container_width=True)
+                st.image(row_b["image_url"], width='stretch')
         with fc:
             is_anchor = bool(row_b.get("is_anchor"))
             st.markdown(

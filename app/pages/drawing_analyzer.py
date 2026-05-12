@@ -347,7 +347,7 @@ def main():
     # ── Left: annotated image ─────────────────────────────────────────────────
     with col_img:
         annotated = render_overlay(active_bytes, parts, selected_id)
-        st.image(annotated, use_container_width=True, caption=active_name)
+        st.image(annotated, width='stretch', caption=active_name)
 
         # Botones de exportación bajo la imagen
         st.markdown('<div style="height:0.5rem;"></div>', unsafe_allow_html=True)
