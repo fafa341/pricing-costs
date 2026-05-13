@@ -1,0 +1,49 @@
+rank_ot,rank_cotizaciones,grupo,cotizaciones,ordenes_trabajo,tasa_conversion,senal
+1,1,Varios / Sin clasificar,1565,381,0.243,SOLIDO
+2,3,Cámara Desgrasadora,500,115,0.23,SOLIDO
+3,15,Tostador de Pan,102,96,0.941,ESTRELLA
+4,2,Acero Inoxidable proyecto,675,87,0.129,NICHO
+5,10,Grifería Pre-Wash,170,82,0.482,ESTRELLA
+6,9,Estante / Repisa,174,56,0.322,SOLIDO
+7,4,Basurero Mall,446,56,0.126,NICHO
+8,6,Lavadero / Pileta,243,51,0.21,SOLIDO
+9,5,Carro de Transporte,257,29,0.113,COMPETIDO
+10,11,Campana Extractora,165,28,0.17,NICHO
+11,20,Congelador / Refrigerador,76,26,0.342,SOLIDO
+12,17,Bandeja / Charola,100,24,0.24,SOLIDO
+13,27,Grifería Lava Cuchara,34,19,0.559,ESTRELLA
+14,21,Tapa / Cubierta,66,17,0.258,SOLIDO
+15,31,Perfil / Ángulo / Pletina,27,17,0.63,ESTRELLA
+16,8,Mesón de Trabajo,175,17,0.097,COMPETIDO
+17,25,Accesorio / Pieza,36,17,0.472,ESTRELLA
+18,7,Cocina Industrial Gas,181,17,0.094,COMPETIDO
+19,19,Mueble (genérico),87,16,0.184,NICHO
+20,15,Rejilla / Sumidero,102,16,0.157,NICHO
+21,22,Freidora,64,13,0.203,SOLIDO
+22,14,Peinazos / Listones,115,13,0.113,COMPETIDO
+23,25,Baño María,36,12,0.333,SOLIDO
+24,12,Baranda / Pasamano,154,11,0.071,COMPETIDO
+25,36,Grifería (genérico),21,9,0.429,ESTRELLA
+26,35,Ducto / Canaleta,23,7,0.304,SOLIDO
+27,23,Parrilla,50,7,0.14,NICHO
+28,32,Vitrina / Exhibidor,25,7,0.28,SOLIDO
+29,13,Equipamiento proyecto,117,7,0.06,COMPETIDO
+30,18,Urinario / Mingitorio,89,6,0.067,COMPETIDO
+31,38,Reparación / Mantención,18,6,0.333,NICHO
+32,32,Salsera,25,5,0.2,SOLIDO
+33,37,Grill / Plancha Cocción,19,4,0.211,NICHO
+34,30,Horno,30,3,0.1,NICHO
+35,44,Sin Datos,3,3,1.0,NICHO
+36,40,Soporte / Consola,12,3,0.25,NICHO
+37,27,Mesa (genérica),34,2,0.059,NICHO
+38,39,Armario / Locker,15,2,0.133,NICHO
+39,32,Escalera / Peldaño,25,2,0.08,NICHO
+40,29,Barra de Bar,32,1,0.031,NICHO
+41,24,Tina / Tanque,45,1,0.022,COMPETIDO
+42,42,Instalación,4,1,0.25,NICHO
+43,41,Contenedor / Cuba,5,1,0.2,NICHO
+44,44,Cafetería / Cafetera,3,1,0.333,NICHO
+45,47,Ducha / Regadera,1,1,1.0,NICHO
+46,46,Calentador de Agua,2,0,0.0,NICHO
+47,47,Tolva,1,0,0.0,NICHO
+48,42,Dispensador,4,0,0.0,NICHO
