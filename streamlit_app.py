@@ -26,6 +26,7 @@ pages = st.navigation([
     st.Page("app/pages/calibration.py",      title="Calibración",          icon="📊"),
     st.Page("app/pages/process_costs.py",    title="Costos de Proceso",    icon="⚙️"),
     st.Page("app/pages/product_audit.py",    title="Auditoría Producto",   icon="🔬"),
+    st.Page("app/pages/material_prices.py", title="Precios de Materiales", icon="💲"),
 ])
 
 pages.run()

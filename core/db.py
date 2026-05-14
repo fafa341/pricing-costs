@@ -71,6 +71,25 @@ def save_rules(rules: dict) -> None:
     load_rules.clear()
 
 
+# ── Material prices (global constants) ────────────────────────────────────────
+
+@st.cache_data(ttl=60)
+def load_material_prices() -> dict:
+    """Load global material price constants from app_settings."""
+    try:
+        r = get_sb().table("app_settings").select("value").eq("key", "material_prices").single().execute()
+        return r.data["value"] if r.data else {}
+    except Exception:
+        return {}
+
+
+def save_material_prices(prices: dict) -> None:
+    """Persist material prices to app_settings and bust cache."""
+    clean = _sanitize_nan(prices)
+    get_sb().table("app_settings").upsert({"key": "material_prices", "value": clean}).execute()
+    load_material_prices.clear()
+
+
 # ── Products ──────────────────────────────────────────────────────────────────
 
 def _from_sb(row: dict) -> dict:

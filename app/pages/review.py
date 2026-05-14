@@ -26,8 +26,8 @@ from datetime import datetime
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "core"))
 sys.path.insert(0, str(ROOT / "app" / "pages"))
-from db import load_rules, save_rules, get_sb, load_all_products, save_bom as _db_save_bom, log_change
-from bom_calc import compute_bom, erp_rows
+from db import load_rules, save_rules, get_sb, load_all_products, save_bom as _db_save_bom, log_change, load_material_prices
+from bom_calc import compute_bom, erp_rows, DEFAULT_GLOBAL_PRICES
 
 # Fallback list — used if PROCESS_RULES.json is unavailable, and as module-level
 # default so PERFILES is always defined before main() updates it dynamically.
@@ -288,13 +288,13 @@ def save_bom(handle: str, mat_rows: list, cons_rows: list):
     load_products.clear()
 
 
-_MAT_EDIT_COLS   = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos"]
-_MAT_TIPO_OPTIONS    = ["Plancha", "Perfil", "Tubo", "Macizo"]
+_MAT_EDIT_COLS   = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos", "valor_unit"]
+_MAT_TIPO_OPTIONS    = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo", "Otro"]
 _MAT_CALIDAD_OPTIONS = ["304", "201", "316", "430"]
 
 def _mat_empty_row() -> dict:
     return {"parte": "", "tipo": "Plancha", "calidad": "304",
-            "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 1, "simbolos": ""}
+            "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 1, "simbolos": "", "valor_unit": None}
 
 def _mat_full_row() -> dict:
     """Empty row with all keys (editable + computed) for storage."""
@@ -311,9 +311,9 @@ def _migrate_mat_row(r: dict) -> dict:
     new["esp_mm"] = None  # old schema had no numeric esp
     return new
 
-def _compute_bom_display(edit_rows: list[dict]) -> tuple[list[dict], int]:
+def _compute_bom_display(edit_rows: list[dict], global_prices: dict | None = None) -> tuple[list[dict], int]:
     """Run bom_calc on edit_rows; return (computed_rows, total_clp)."""
-    computed = compute_bom(edit_rows)
+    computed = compute_bom(edit_rows, global_prices)
     total = sum(int(r.get("total_clp") or 0) for r in computed)
     return computed, total
 
@@ -350,9 +350,16 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
         st.session_state[_con_ikey] = pd.DataFrame(cons_init)
         st.session_state[_con_ihsh] = cons_hash
 
+    # Load global prices (Supabase → fallback to hardcoded defaults)
+    global_prices = load_material_prices() or DEFAULT_GLOBAL_PRICES
+
     # ── Materiales — editable columns only ───────────────────────────────────
     st.markdown('<div class="dulox-section-label" style="margin-bottom:0.35rem;">MATERIALES (BOM)</div>', unsafe_allow_html=True)
-    st.caption("Parte · Tipo · Calidad · esp / L / A (mm) · Cant · Símbolos → Kg y costos calculados abajo")
+    st.caption("Tipo Plancha/Coil → KG (L×A×esp). Perfil/Tubo/Macizo → ML (L/1000). Otro → Unidades manuales. Precio/unit vacío = precio global.")
+
+    # Ensure valor_unit column exists in session df (needed after migration)
+    if "valor_unit" not in st.session_state[_mat_ikey].columns:
+        st.session_state[_mat_ikey]["valor_unit"] = None
 
     mat_df = st.data_editor(
         st.session_state[_mat_ikey][_MAT_EDIT_COLS],
@@ -361,14 +368,15 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
         num_rows="dynamic",
         hide_index=True,
         column_config={
-            "parte":    st.column_config.TextColumn("Parte", width="medium"),
-            "tipo":     st.column_config.SelectboxColumn("Tipo", options=_MAT_TIPO_OPTIONS, width="small"),
-            "calidad":  st.column_config.SelectboxColumn("Calidad", options=_MAT_CALIDAD_OPTIONS, width="small"),
-            "esp_mm":   st.column_config.NumberColumn("esp mm", format="%.1f", step=0.5, min_value=0.1, width="small"),
-            "L_mm":     st.column_config.NumberColumn("L mm", format="%.0f", step=1.0, width="small"),
-            "A_mm":     st.column_config.NumberColumn("A / Ø mm", format="%.0f", step=1.0, width="small"),
-            "cant":     st.column_config.NumberColumn("Cant", format="%d", step=1, min_value=1, width="small"),
-            "simbolos": st.column_config.TextColumn("Símbolos", help="P1 P2 T4 ⊙ S V M EXT", width="small"),
+            "parte":      st.column_config.TextColumn("Parte", width="medium"),
+            "tipo":       st.column_config.SelectboxColumn("Tipo", options=_MAT_TIPO_OPTIONS, width="small"),
+            "calidad":    st.column_config.SelectboxColumn("Calidad", options=_MAT_CALIDAD_OPTIONS, width="small"),
+            "esp_mm":     st.column_config.NumberColumn("esp mm", format="%.1f", step=0.5, min_value=0.1, width="small"),
+            "L_mm":       st.column_config.NumberColumn("L mm", format="%.0f", step=1.0, width="small"),
+            "A_mm":       st.column_config.NumberColumn("A / Ø mm", format="%.0f", step=1.0, width="small"),
+            "cant":       st.column_config.NumberColumn("Cant", format="%d", step=1, min_value=1, width="small"),
+            "simbolos":   st.column_config.TextColumn("Símbolos", help="P1 P2 T4 ⊙ S V M EXT", width="small"),
+            "valor_unit": st.column_config.NumberColumn("$ / unit", help="Override precio global. Vacío = usa precio global.", format="$ %d", step=50, min_value=0, width="small"),
         },
     )
     # data_editor manages its own state — do NOT write mat_df back to session_state here
@@ -376,23 +384,23 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
 
     # ── Computed summary — rendered from return value, not from session_state ─
     if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
-        computed, mat_total = _compute_bom_display(mat_df.to_dict("records"))
+        computed, mat_total = _compute_bom_display(mat_df.to_dict("records"), global_prices)
         comp_df = pd.DataFrame([{
-            "Parte":        r.get("parte", ""),
-            "SKU":          r.get("sku_material", "—"),
-            "kg neto/u":    r.get("kg_neto", 0),
-            "Waste ×":      r.get("waste_factor", 1.05),
-            "kg bruto/u":   r.get("kg_bruto", 0),
-            "Cant":         r.get("cant", 1),
-            "$/kg":         r.get("precio_kg", 0),
-            "Total $":      r.get("total_clp", 0),
+            "Parte":       r.get("parte", ""),
+            "SKU":         r.get("sku_material", "—") or "—",
+            "Unidad":      r.get("unidad", ""),
+            "kg bruto/u":  r.get("kg_bruto"),       # None for ML/U rows → renders blank
+            "Waste ×":     r.get("waste_factor"),    # None for ML/U rows → renders blank
+            "Qty total":   r.get("qty_total", 0),
+            "$ / unit":    r.get("valor_unit", 0),
+            "Total $":     r.get("total_clp", 0),
         } for r in computed])
         st.dataframe(comp_df, use_container_width=True, hide_index=True,
             column_config={
-                "kg neto/u":  st.column_config.NumberColumn(format="%.4f"),
-                "Waste ×":    st.column_config.NumberColumn(format="%.2f"),
                 "kg bruto/u": st.column_config.NumberColumn(format="%.4f"),
-                "$/kg":       st.column_config.NumberColumn(format="%.0f"),
+                "Waste ×":    st.column_config.NumberColumn(format="%.2f"),
+                "Qty total":  st.column_config.NumberColumn(format="%.4f"),
+                "$ / unit":   st.column_config.NumberColumn(format="$ %.0f"),
                 "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
             })
         # Warnings
@@ -452,11 +460,12 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
             if erp:
                 st.dataframe(pd.DataFrame(erp), use_container_width=True, hide_index=True,
                     column_config={
-                        "sku_material":   st.column_config.TextColumn("Artículo Consumo"),
-                        "total_kg_bruto": st.column_config.NumberColumn("Cantidad (kg)", format="%.3f"),
-                        "precio_kg":      st.column_config.NumberColumn("$/kg", format="%.0f"),
-                        "total_clp":      st.column_config.NumberColumn("Total $", format="$ %.0f"),
-                        "partes":         st.column_config.TextColumn("Partes"),
+                        "sku_material": st.column_config.TextColumn("Artículo Consumo"),
+                        "unidad":       st.column_config.TextColumn("Unidad"),
+                        "qty_total":    st.column_config.NumberColumn("Cantidad", format="%.3f"),
+                        "valor_unit":   st.column_config.NumberColumn("$ / unit", format="$ %.0f"),
+                        "total_clp":    st.column_config.NumberColumn("Total $", format="$ %.0f"),
+                        "partes":       st.column_config.TextColumn("Partes"),
                     })
 
 @st.cache_data(ttl=5)
