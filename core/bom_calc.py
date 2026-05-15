@@ -230,7 +230,7 @@ def compute_part(row: dict, global_prices: Optional[dict] = None) -> dict:
     esp_mm  = _to_float(row.get("esp_mm"))
     L_mm    = _to_float(row.get("L_mm"))
     A_mm    = _to_float(row.get("A_mm"))
-    cant    = int(row.get("cant") or 1)
+    cant    = int(_to_float(row.get("cant")) or 1)
     es_diam = bool(row.get("es_diametro", False))
 
     syms_raw = row.get("simbolos", [])
