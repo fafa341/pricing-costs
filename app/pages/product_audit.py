@@ -24,8 +24,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "core"))
-from db import load_rules, get_sb, save_bom as _save_bom_db
-from bom_calc import compute_bom, erp_rows
+from db import load_rules, get_sb, save_bom as _save_bom_db, load_material_prices
+from bom_calc import compute_bom, erp_rows, DEFAULT_GLOBAL_PRICES
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
 
@@ -286,7 +286,7 @@ def _scale_mat_rows(anchor_rows: list, factor: float) -> list:
             if row.get("A_mm"):
                 row["A_mm"] = round(_nan(row.get("A_mm", 0)) * factor, 2)
             # Recompute kg + cost after scaling
-            computed = compute_bom([row])
+            computed = compute_bom([row], load_material_prices() or DEFAULT_GLOBAL_PRICES)
             row = computed[0] if computed else row
         else:
             # Old schema fallback: scale total + kg_ml directly
@@ -683,20 +683,26 @@ def render_bom_extrapolated(
     return mat_total, cons_total
 
 
-_AUDIT_MAT_EDIT_COLS = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos"]
-_AUDIT_MAT_TIPO  = ["Plancha", "Perfil", "Tubo", "Macizo"]
+_AUDIT_MAT_EDIT_COLS = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos", "valor_unit"]
+_AUDIT_MAT_TIPO  = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo", "Otro"]
 _AUDIT_MAT_CAL   = ["304", "201", "316", "430"]
 
 def _audit_mat_empty():
     return {"parte": "", "tipo": "Plancha", "calidad": "304",
-            "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 1, "simbolos": ""}
+            "esp_mm": float("nan"), "L_mm": float("nan"), "A_mm": float("nan"),
+            "cant": 1, "simbolos": "", "valor_unit": float("nan")}
 
 def _audit_migrate(r: dict) -> dict:
     if "parte" in r:
-        return {**_audit_mat_empty(), **{k: r[k] for k in _AUDIT_MAT_EDIT_COLS if k in r}}
-    new = _audit_mat_empty()
-    new["parte"] = r.get("Subconjunto", "") or r.get("Material", "")
-    return new
+        base = _audit_mat_empty()
+        base.update({k: r[k] for k in _AUDIT_MAT_EDIT_COLS if k in r})
+        for c in ("esp_mm", "L_mm", "A_mm", "valor_unit"):
+            if base[c] is None: base[c] = float("nan")
+        return base
+    base = _audit_mat_empty()
+    base["parte"]      = r.get("Subconjunto", "") or r.get("Material", "")
+    base["valor_unit"] = float(r.get("precio_kg", float("nan")) or float("nan"))
+    return base
 
 
 def render_bom_editable(product: dict, system_cons: list):
@@ -714,25 +720,35 @@ def render_bom_editable(product: dict, system_cons: list):
     ms, mh = f"aud_mat_{handle}", f"aud_mh_{handle}"
     mhash  = hash(str(mat_init))
     if st.session_state.get(mh) != mhash:
-        st.session_state[ms] = pd.DataFrame(mat_init)
+        _df = pd.DataFrame(mat_init)
+        for _c in ("esp_mm", "L_mm", "A_mm", "valor_unit"):
+            _df[_c] = pd.to_numeric(_df[_c], errors="coerce")
+        _df["cant"] = pd.to_numeric(_df["cant"], errors="coerce").fillna(1).astype(int)
+        st.session_state[ms] = _df
         st.session_state[mh] = mhash
 
+    if "valor_unit" not in st.session_state[ms].columns:
+        st.session_state[ms]["valor_unit"] = float("nan")
+
+    global_prices = load_material_prices() or DEFAULT_GLOBAL_PRICES
+
     st.markdown('<div class="sec-label">MATERIALES</div>', unsafe_allow_html=True)
-    st.caption("Completar: Parte · Tipo · Calidad · esp/L/A mm · Cant · Símbolos")
+    st.caption("Plancha/Coil→KG, Perfil/Tubo/Macizo→ML, Otro→U. $ / unit vacío = precio global.")
 
     edited_mat = st.data_editor(
         st.session_state[ms][_AUDIT_MAT_EDIT_COLS],
         key=f"aud_bomedit_{handle}",
         use_container_width=True, num_rows="dynamic", hide_index=True,
         column_config={
-            "parte":    st.column_config.TextColumn("Parte", width="medium"),
-            "tipo":     st.column_config.SelectboxColumn("Tipo", options=_AUDIT_MAT_TIPO, width="small"),
-            "calidad":  st.column_config.SelectboxColumn("Calidad", options=_AUDIT_MAT_CAL, width="small"),
-            "esp_mm":   st.column_config.NumberColumn("esp mm", format="%.1f", step=0.5, width="small"),
-            "L_mm":     st.column_config.NumberColumn("L mm",   format="%.0f", step=1.0, width="small"),
-            "A_mm":     st.column_config.NumberColumn("A/Ø mm", format="%.0f", step=1.0, width="small"),
-            "cant":     st.column_config.NumberColumn("Cant",   format="%d",   step=1,   width="small"),
-            "simbolos": st.column_config.TextColumn("Símbolos", help="P1 P2 T4 ⊙ S V M EXT", width="small"),
+            "parte":      st.column_config.TextColumn("Parte", width="medium"),
+            "tipo":       st.column_config.SelectboxColumn("Tipo", options=_AUDIT_MAT_TIPO, width="small"),
+            "calidad":    st.column_config.SelectboxColumn("Calidad", options=_AUDIT_MAT_CAL, width="small"),
+            "esp_mm":     st.column_config.NumberColumn("esp mm", format="%.1f", step=0.5, min_value=0.1, width="small"),
+            "L_mm":       st.column_config.NumberColumn("L mm",   format="%.0f", step=1.0, width="small"),
+            "A_mm":       st.column_config.NumberColumn("A/Ø mm", format="%.0f", step=1.0, width="small"),
+            "cant":       st.column_config.NumberColumn("Cant",   format="%d",   step=1, min_value=1, width="small"),
+            "simbolos":   st.column_config.TextColumn("Símbolos", help="P1 P2 T4 ⊙ S V M EXT", width="small"),
+            "valor_unit": st.column_config.NumberColumn("$ / unit", help="Override precio global. Vacío = usa precio global.", format="$ %d", step=50, min_value=0, width="small"),
         },
     )
 
@@ -740,18 +756,20 @@ def render_bom_editable(product: dict, system_cons: list):
     computed = []
     mat_total = 0
     if isinstance(edited_mat, pd.DataFrame) and not edited_mat.empty:
-        computed = compute_bom(edited_mat.to_dict("records"))
+        computed = compute_bom(edited_mat.to_dict("records"), global_prices)
         mat_total = sum(int(r.get("total_clp") or 0) for r in computed)
         comp_display = pd.DataFrame([{
-            "Parte": r.get("parte",""), "SKU": r.get("sku_material","—"),
-            "kg bruto/u": r.get("kg_bruto", 0), "Cant": r.get("cant",1),
-            "$/kg": r.get("precio_kg",0), "Total $": r.get("total_clp",0),
+            "Parte":     r.get("parte",""),
+            "Unidad":    r.get("unidad",""),
+            "Qty total": r.get("qty_total", 0),
+            "$ / unit":  r.get("valor_unit", 0),
+            "Total $":   r.get("total_clp", 0),
         } for r in computed])
         st.dataframe(comp_display, use_container_width=True, hide_index=True,
             column_config={
-                "kg bruto/u": st.column_config.NumberColumn(format="%.4f"),
-                "$/kg":       st.column_config.NumberColumn(format="%.0f"),
-                "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+                "Qty total": st.column_config.NumberColumn(format="%.4f"),
+                "$ / unit":  st.column_config.NumberColumn(format="$ %.0f"),
+                "Total $":   st.column_config.NumberColumn(format="$ %.0f"),
             })
 
     col_tot, col_save = st.columns([3,1])
