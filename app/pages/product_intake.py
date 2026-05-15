@@ -25,7 +25,8 @@ import anthropic
 
 ROOT       = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "core"))
-from db import load_rules, save_rules, get_sb, search_products, get_product, save_bom as _db_save_bom, handle_exists, log_change
+from db import load_rules, save_rules, get_sb, search_products, get_product, save_bom as _db_save_bom, handle_exists, log_change, load_material_prices
+from bom_calc import compute_bom, erp_rows, DEFAULT_GLOBAL_PRICES
 
 MODEL = "claude-opus-4-5"
 
@@ -431,113 +432,144 @@ def complexity_options_for(perfil: str, rules: dict) -> list[str]:
         return ["C1", "C2", "C3"]
     return sorted(rules["profiles"][perfil].get("complexity_thresholds", {}).keys())
 
-# ─── BOM editor widget ────────────────────────────────────────────────────────
+# ─── BOM editor widget (new schema) ──────────────────────────────────────────
+
+_BOM_EDIT_COLS    = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos", "valor_unit"]
+_BOM_TIPO_OPTIONS = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo", "Otro"]
+_BOM_CAL_OPTIONS  = ["304", "201", "316", "430"]
+
+def _bom_empty_row() -> dict:
+    return {"parte": "", "tipo": "Plancha", "calidad": "304",
+            "esp_mm": float("nan"), "L_mm": float("nan"), "A_mm": float("nan"),
+            "cant": 1, "simbolos": "", "valor_unit": float("nan")}
+
+def _normalize_mat_row(r: dict) -> dict:
+    """Accept both old-schema and new-schema rows; always return new-schema."""
+    if "parte" in r:
+        base = _bom_empty_row()
+        base.update({k: r[k] for k in _BOM_EDIT_COLS if k in r})
+        # Ensure numeric columns are float (not None — causes object dtype)
+        for c in ("esp_mm", "L_mm", "A_mm", "valor_unit"):
+            if base[c] is None:
+                base[c] = float("nan")
+        return base
+    # Old schema: Subconjunto/Dimensiones/Material/kg_ml/precio_kg
+    base = _bom_empty_row()
+    base["parte"]      = r.get("Subconjunto", "") or r.get("Material", "")
+    base["valor_unit"] = float(r.get("precio_kg", float("nan")) or float("nan"))
+    return base
+
 
 def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix: str):
-    """Inline BOM editor. Returns (mat_rows, cons_rows) from current editor state."""
-    MAT_CFG = {
-        "Subconjunto": st.column_config.TextColumn("Subconjunto", width="medium"),
-        "Dimensiones": st.column_config.TextColumn("Dimensiones", width="medium"),
-        "Material":    st.column_config.TextColumn("Material", width="large"),
-        "Cantidad":    st.column_config.NumberColumn("Cant.",       min_value=0, step=0.001, format="%.3f"),
-        "kg_ml":       st.column_config.NumberColumn("kg/ML/u",    min_value=0, step=0.0001, format="%.4f"),
-        "precio_kg":   st.column_config.NumberColumn("$/kg o $/u", min_value=0, step=1,      format="%.0f"),
-    }
+    """
+    Inline BOM editor — new schema (parte/tipo/calidad/esp_mm/L_mm/A_mm/cant/simbolos/valor_unit).
+    Returns (mat_rows, cons_rows, total_clp).
+    """
+    global_prices = load_material_prices() or DEFAULT_GLOBAL_PRICES
+
     CONS_CFG = {
         "Producto":  st.column_config.TextColumn("Producto", width="large"),
         "Proceso":   st.column_config.TextColumn("Proceso", width="medium"),
-        "Cantidad":  st.column_config.NumberColumn("Cant.",    min_value=0, step=0.001, format="%.3f"),
+        "Cantidad":  st.column_config.NumberColumn("Cant.", min_value=0, step=0.001, format="%.3f"),
         "Unidad":    st.column_config.SelectboxColumn("Unidad", options=["u","kg","L","m","ml","hr"]),
-        "Precio_u":  st.column_config.NumberColumn("Precio u. $", min_value=0, step=1,  format="%.0f"),
+        "Precio_u":  st.column_config.NumberColumn("Precio u. $", min_value=0, step=1, format="%.0f"),
     }
 
-    mat_default  = saved_mat  or [{"Subconjunto":"","Dimensiones":"","Material":"","Cantidad":1.0,"kg_ml":0.0,"precio_kg":3600}]
+    mat_default  = [_normalize_mat_row(r) for r in saved_mat] if saved_mat else [_bom_empty_row()]
     cons_default = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0}]
 
-    # Seed session state once; invalidate when source data changes
     _mat_skey  = f"df_bom_mat_{key_prefix}"
     _mat_hkey  = f"hash_bom_mat_{key_prefix}"
     _cons_skey = f"df_bom_cons_{key_prefix}"
     _cons_hkey = f"hash_bom_cons_{key_prefix}"
+
     _mat_hash  = hash(str(mat_default))
     _cons_hash = hash(str(cons_default))
+
     if st.session_state.get(_mat_hkey) != _mat_hash or _mat_skey not in st.session_state:
-        st.session_state[_mat_skey] = pd.DataFrame(mat_default)
+        df = pd.DataFrame(mat_default)
+        for c in ("esp_mm", "L_mm", "A_mm", "valor_unit"):
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        df["cant"] = pd.to_numeric(df["cant"], errors="coerce").fillna(1).astype(int)
+        st.session_state[_mat_skey] = df
         st.session_state[_mat_hkey] = _mat_hash
+
     if st.session_state.get(_cons_hkey) != _cons_hash or _cons_skey not in st.session_state:
         st.session_state[_cons_skey] = pd.DataFrame(cons_default)
         st.session_state[_cons_hkey] = _cons_hash
 
-    _result_skey = f"result_bom_{key_prefix}"
+    # Ensure valor_unit column exists (in case seeded before schema update)
+    if "valor_unit" not in st.session_state[_mat_skey].columns:
+        st.session_state[_mat_skey]["valor_unit"] = float("nan")
 
-    # Seed result from saved data on first load so totals aren't 0 before submit
-    if _result_skey not in st.session_state:
-        _rm, _rc, _rmt, _rct = mat_default, cons_default, 0, 0
-        if mat_default:
-            _mdf = pd.DataFrame(mat_default)
-            _qty = _mdf["Cantidad"].fillna(1.0) if "Cantidad" in _mdf.columns else pd.Series([1.0] * len(_mdf))
-            _mdf["total"] = (_qty * _mdf["kg_ml"].fillna(0) * _mdf["precio_kg"].fillna(0)).round().astype(int)
-            _rmt = int(_mdf["total"].sum())
-            _rm  = _mdf.to_dict("records")
-        if cons_default:
-            _cdf = pd.DataFrame(cons_default)
-            _cdf["Total"] = (_cdf["Cantidad"].fillna(0) * _cdf["Precio_u"].fillna(0)).round().astype(int)
-            _rct = int(_cdf["Total"].sum())
-            _rc  = _cdf.to_dict("records")
-        st.session_state[_result_skey] = (_rm, _rc, _rmt, _rct)
+    st.caption("Tipo Plancha/Coil → KG (L×A×esp). Perfil/Tubo/Macizo → ML (L/1000). Otro → Unidades manuales. $ / unit vacío = precio global.")
 
-    with st.form(f"bom_form_{key_prefix}"):
-        st.markdown("**📋 Materiales (BOM)**")
-        mat_df = st.data_editor(
-            st.session_state[_mat_skey],
-            key=f"bom_mat_editor_{key_prefix}",
-            use_container_width=True, num_rows="dynamic",
-            column_config=MAT_CFG, hide_index=True,
-        )
-        st.markdown("**🔩 Consumibles**")
-        cons_df = st.data_editor(
-            st.session_state[_cons_skey],
-            key=f"bom_cons_editor_{key_prefix}",
-            use_container_width=True, num_rows="dynamic",
-            column_config=CONS_CFG, hide_index=True,
-        )
-        bom_submitted = st.form_submit_button("📊 Recalcular costos", use_container_width=True)
+    mat_df = st.data_editor(
+        st.session_state[_mat_skey][_BOM_EDIT_COLS],
+        key=f"bom_mat_editor_{key_prefix}",
+        use_container_width=True,
+        num_rows="dynamic",
+        hide_index=True,
+        column_config={
+            "parte":      st.column_config.TextColumn("Parte", width="medium"),
+            "tipo":       st.column_config.SelectboxColumn("Tipo", options=_BOM_TIPO_OPTIONS, width="small"),
+            "calidad":    st.column_config.SelectboxColumn("Calidad", options=_BOM_CAL_OPTIONS, width="small"),
+            "esp_mm":     st.column_config.NumberColumn("esp mm", format="%.1f", step=0.5, min_value=0.1, width="small"),
+            "L_mm":       st.column_config.NumberColumn("L mm", format="%.0f", step=1.0, width="small"),
+            "A_mm":       st.column_config.NumberColumn("A / Ø mm", format="%.0f", step=1.0, width="small"),
+            "cant":       st.column_config.NumberColumn("Cant", format="%d", step=1, min_value=1, width="small"),
+            "simbolos":   st.column_config.TextColumn("Símbolos", help="P1 P2 T4 ⊙ S V M EXT", width="small"),
+            "valor_unit": st.column_config.NumberColumn("$ / unit", help="Override precio global. Vacío = usa precio global.", format="$ %d", step=50, min_value=0, width="small"),
+        },
+    )
 
-    if bom_submitted:
-        st.session_state[_mat_skey]  = mat_df
-        st.session_state[_cons_skey] = cons_df
+    # Computed summary (read-only)
+    computed = []
+    mat_total = 0
+    if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
+        computed = compute_bom(mat_df.to_dict("records"), global_prices)
+        mat_total = sum(int(r.get("total_clp") or 0) for r in computed)
+        comp_df = pd.DataFrame([{
+            "Parte":      r.get("parte", ""),
+            "Unidad":     r.get("unidad", ""),
+            "kg bruto/u": r.get("kg_bruto"),
+            "Qty total":  r.get("qty_total", 0),
+            "$ / unit":   r.get("valor_unit", 0),
+            "Total $":    r.get("total_clp", 0),
+        } for r in computed])
+        st.dataframe(comp_df, use_container_width=True, hide_index=True,
+            column_config={
+                "kg bruto/u": st.column_config.NumberColumn(format="%.4f"),
+                "Qty total":  st.column_config.NumberColumn(format="%.4f"),
+                "$ / unit":   st.column_config.NumberColumn(format="$ %.0f"),
+                "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+            })
+        warns = [f"**{r.get('parte','?')}:** {w}" for r in computed for w in (r.get("warnings") or [])]
+        if warns:
+            st.warning("\n".join(f"- {w}" for w in warns))
 
-        mat_total  = 0
-        cons_total = 0
-        mat_rows   = mat_default
-        cons_rows  = cons_default
+    st.markdown("**🔩 Consumibles**")
+    cons_df = st.data_editor(
+        st.session_state[_cons_skey],
+        key=f"bom_cons_editor_{key_prefix}",
+        use_container_width=True, num_rows="dynamic",
+        column_config=CONS_CFG, hide_index=True,
+    )
 
-        if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
-            _m = mat_df.copy()
-            _qty = _m.get("Cantidad", pd.Series([1.0] * len(_m))).fillna(1.0)
-            _m["total"] = (_qty * _m["kg_ml"].fillna(0) * _m["precio_kg"].fillna(0)).round().astype(int)
-            mat_total = int(_m["total"].sum())
-            mat_rows  = _m.to_dict("records")
-
-        if isinstance(cons_df, pd.DataFrame) and not cons_df.empty:
-            _c = cons_df.copy()
-            _c["Total"] = (_c["Cantidad"].fillna(0) * _c["Precio_u"].fillna(0)).round().astype(int)
-            cons_total = int(_c["Total"].sum())
-            cons_rows  = _c.to_dict("records")
-
-        st.session_state[_result_skey] = (mat_rows, cons_rows, mat_total, cons_total)
-
-    # Use last committed result (persists between reruns)
-    if _result_skey in st.session_state:
-        mat_rows, cons_rows, mat_total, cons_total = st.session_state[_result_skey]
-    else:
-        mat_rows, cons_rows, mat_total, cons_total = mat_default, cons_default, 0, 0
+    cons_total = 0
+    cons_rows  = cons_default
+    if isinstance(cons_df, pd.DataFrame) and not cons_df.empty:
+        _c = cons_df.copy()
+        _c["Total"] = (_c["Cantidad"].fillna(0) * _c["Precio_u"].fillna(0)).round().astype(int)
+        cons_total = int(_c["Total"].sum())
+        cons_rows  = _c.to_dict("records")
 
     col_a, col_b, col_c = st.columns(3)
     col_a.metric("Material", f"${mat_total:,}")
     col_b.metric("Consumibles", f"${cons_total:,}")
     col_c.metric("Total directo", f"${mat_total + cons_total:,}")
 
+    mat_rows = computed if computed else mat_df.to_dict("records") if isinstance(mat_df, pd.DataFrame) else mat_default
     return mat_rows, cons_rows, mat_total + cons_total
 
 
@@ -686,20 +718,11 @@ def _upload_and_extract(rules: dict, tab_key: str) -> tuple[bytes | None, str, d
 
 
 def _bom_from_extraction(extraction: dict | None) -> list:
-    """Return mat_rows pre-populated from Vision extraction, or []."""
+    """Return mat_rows pre-populated from Vision extraction (new schema), or []."""
     if not extraction:
         return []
     mat = extraction.get("bom_materials", [])
-    return [
-        {
-            "Subconjunto": r.get("Subconjunto", ""),
-            "Dimensiones": r.get("Dimensiones", ""),
-            "Material":    r.get("Material", ""),
-            "kg_ml":       float(r.get("kg_ml", 0) or 0),
-            "precio_kg":   int(r.get("precio_kg", 3600) or 3600),
-        }
-        for r in mat
-    ]
+    return [_normalize_mat_row(r) for r in mat]
 
 
 def _cons_from_rules(perfil: str, complejidad: str, rules: dict) -> list:
@@ -971,7 +994,7 @@ def main():
             st.divider()
             st.subheader("Costo total estimado")
             _cost_summary(perfil, complejidad,
-                          sum(r.get("total",0) for r in mat_rows),
+                          sum(r.get("total_clp", r.get("total", 0)) for r in mat_rows),
                           sum(r.get("Total",0) for r in cons_rows),
                           bom_total, rules)
 
@@ -1092,7 +1115,7 @@ def main():
             st.divider()
             st.subheader("Costo total estimado")
             _cost_summary(perfil_d, comp_d,
-                          sum(r.get("total",0) for r in mat_rows_d),
+                          sum(r.get("total_clp", r.get("total", 0)) for r in mat_rows_d),
                           sum(r.get("Total",0) for r in cons_rows_d),
                           bom_total_d, rules)
 
@@ -1214,7 +1237,7 @@ def main():
         st.divider()
         st.subheader("Costo total")
         _cost_summary(row_b.get("perfil_proceso",""), row_b.get("complejidad",""),
-                      sum(r.get("total",0) for r in mat_rows_b),
+                      sum(r.get("total_clp", r.get("total", 0)) for r in mat_rows_b),
                       sum(r.get("Total",0) for r in cons_rows_b),
                       bom_total_b, rules)
 

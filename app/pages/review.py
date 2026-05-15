@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "core"))
 sys.path.insert(0, str(ROOT / "app" / "pages"))
 from db import load_rules, save_rules, get_sb, load_all_products, save_bom as _db_save_bom, log_change, load_material_prices
-from bom_calc import compute_bom, erp_rows, DEFAULT_GLOBAL_PRICES
+from bom_calc import compute_bom, erp_rows, DEFAULT_GLOBAL_PRICES, _to_float
 
 # Fallback list — used if PROCESS_RULES.json is unavailable, and as module-level
 # default so PERFILES is always defined before main() updates it dynamically.
@@ -344,7 +344,14 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
     mat_hash  = hash(str(mat_init))
     cons_hash = hash(str(cons_init))
     if st.session_state.get(_mat_ihsh) != mat_hash:
-        st.session_state[_mat_ikey] = pd.DataFrame(mat_init)
+        df = pd.DataFrame(mat_init)
+        # Cast numeric columns to float so data_editor renders them as editable
+        for _col in ("esp_mm", "L_mm", "A_mm", "valor_unit"):
+            if _col in df.columns:
+                df[_col] = pd.to_numeric(df[_col], errors="coerce")
+        if "cant" in df.columns:
+            df["cant"] = pd.to_numeric(df["cant"], errors="coerce").fillna(1).astype(int)
+        st.session_state[_mat_ikey] = df
         st.session_state[_mat_ihsh] = mat_hash
     if st.session_state.get(_con_ihsh) != cons_hash:
         st.session_state[_con_ikey] = pd.DataFrame(cons_init)
