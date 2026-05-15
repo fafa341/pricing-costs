@@ -89,11 +89,12 @@ def _load_bucket(profile_key: str, complejidad: str) -> pd.DataFrame:
     return df[df["complejidad"] == complejidad].reset_index(drop=True)
 
 
-def _save_bom_to_db(handle: str, mat_df: pd.DataFrame, cons_df: pd.DataFrame):
+def _save_bom_to_db(handle: str, mat_df: pd.DataFrame, cons_df: pd.DataFrame, otros_df: pd.DataFrame | None = None):
     """Persist BOM dataframes as JSON via Supabase."""
-    mat_rows  = mat_df.to_dict("records")  if isinstance(mat_df,  pd.DataFrame) else []
-    cons_rows = cons_df.to_dict("records") if isinstance(cons_df, pd.DataFrame) else []
-    _save_bom_db(handle, mat_rows, cons_rows)
+    mat_rows   = mat_df.to_dict("records")   if isinstance(mat_df,   pd.DataFrame) else []
+    cons_rows  = cons_df.to_dict("records")  if isinstance(cons_df,  pd.DataFrame) else []
+    otros_rows = otros_df[_CAL_OTROS_COLS].to_dict("records") if isinstance(otros_df, pd.DataFrame) else None
+    _save_bom_db(handle, mat_rows, cons_rows, otros_rows)
     _load_profile.clear()
     _load_bucket.clear()
 
@@ -368,8 +369,9 @@ def fmt_clp(v):
 # ─── BOM schema helpers (shared across calibration editors) ───────────────────
 
 _CAL_MAT_EDIT_COLS  = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos", "valor_unit"]
-_CAL_MAT_TIPO       = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo", "Otro"]
+_CAL_MAT_TIPO       = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo"]  # "Otro" → Table 2
 _CAL_MAT_CAL        = ["304", "201", "316", "430"]
+_CAL_OTROS_COLS     = ["parte", "cant", "valor_unit"]
 
 def _cal_mat_empty():
     return {"parte": "", "tipo": "Plancha", "calidad": "304",
@@ -389,40 +391,100 @@ def _cal_normalize(r: dict) -> dict:
     base["valor_unit"] = float(r.get("precio_kg", float("nan")) or float("nan"))
     return base
 
+def _cal_otros_empty():
+    return {"parte": "", "cant": 1, "valor_unit": float("nan")}
+
 def _cal_seed_df(rows: list) -> pd.DataFrame:
     """Create DataFrame with correct dtypes for data_editor."""
-    df = pd.DataFrame([_cal_normalize(r) for r in rows] or [_cal_mat_empty()])
+    # Filter out "Otro" rows — they belong in Table 2
+    formula_rows = [r for r in rows if (r.get("tipo") or "Plancha").strip().lower() != "otro"]
+    df = pd.DataFrame([_cal_normalize(r) for r in formula_rows] or [_cal_mat_empty()])
     for c in ("esp_mm", "L_mm", "A_mm", "valor_unit"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df["cant"] = pd.to_numeric(df["cant"], errors="coerce").fillna(1).astype(int)
     return df
 
+def _cal_seed_otros_df(bom_otros_raw, bom_mat_raw=None) -> pd.DataFrame:
+    """Seed otros DataFrame from bom_otros column or migrate tipo='Otro' rows."""
+    if bom_otros_raw and bom_otros_raw not in ("[]", "null", ""):
+        try:
+            rows = json.loads(bom_otros_raw) if isinstance(bom_otros_raw, str) else bom_otros_raw
+            if rows:
+                df = pd.DataFrame(rows)
+                df["cant"]       = pd.to_numeric(df.get("cant",       pd.Series(dtype="int")), errors="coerce").fillna(1).astype(int)
+                df["valor_unit"] = pd.to_numeric(df.get("valor_unit", pd.Series(dtype="float")), errors="coerce")
+                return df
+        except Exception:
+            pass
+    # Migrate "Otro" rows from bom_materials
+    if bom_mat_raw:
+        try:
+            mat = json.loads(bom_mat_raw) if isinstance(bom_mat_raw, str) else (bom_mat_raw or [])
+            otros = [
+                {"parte": r.get("parte",""), "cant": int(r.get("cant",1) or 1),
+                 "valor_unit": float(r.get("valor_unit") or 0) or float("nan")}
+                for r in mat if (r.get("tipo") or "").strip().lower() == "otro"
+            ]
+            if otros:
+                df = pd.DataFrame(otros)
+                df["cant"]       = pd.to_numeric(df["cant"],       errors="coerce").fillna(1).astype(int)
+                df["valor_unit"] = pd.to_numeric(df["valor_unit"], errors="coerce")
+                return df
+        except Exception:
+            pass
+    return pd.DataFrame([_cal_otros_empty()])
+
 
 # ─── Editable BOM table (new schema) ──────────────────────────────────────────
 
-def bom_editor(label, default_rows, key):
-    """Materials BOM editor — new schema. Returns edited DataFrame."""
+def bom_editor(label, default_rows, key, otros_default=None):
+    """
+    Materials BOM editor — two tables:
+    Table 1 (formula): Plancha/Coil/Perfil/Tubo/Macizo.
+    Table 2 (otros):   parte/cant/valor_unit.
+    Returns (edited_formula_df, otros_df).
+    """
     global_prices = load_material_prices() or _CAL_DEFAULT_PRICES
 
-    hkey = f"h_{key}"
-    row_hash = hash(str(default_rows))
+    hkey  = f"h_{key}"
+    okey  = f"otr_{key}"
+    ohkey = f"h_otr_{key}"
+
+    row_hash  = hash(str(default_rows))
+    otr_hash  = hash(str(otros_default or []))
+
     if st.session_state.get(hkey) != row_hash or key not in st.session_state:
         st.session_state[key]  = _cal_seed_df(default_rows)
         st.session_state[hkey] = row_hash
 
-    # Ensure valor_unit exists (for old sessions)
+    if st.session_state.get(ohkey) != otr_hash or okey not in st.session_state:
+        if otros_default:
+            _dfo = pd.DataFrame(otros_default)
+            _dfo["cant"]       = pd.to_numeric(_dfo["cant"],       errors="coerce").fillna(1).astype(int)
+            _dfo["valor_unit"] = pd.to_numeric(_dfo["valor_unit"], errors="coerce")
+        else:
+            # Migrate "Otro" rows from default_rows if any
+            otros_migrate = [
+                {"parte": r.get("parte",""), "cant": int(r.get("cant",1) or 1),
+                 "valor_unit": float(r.get("valor_unit") or 0) or float("nan")}
+                for r in default_rows if (r.get("tipo") or "").strip().lower() == "otro"
+            ] or [_cal_otros_empty()]
+            _dfo = pd.DataFrame(otros_migrate)
+            _dfo["cant"]       = pd.to_numeric(_dfo["cant"],       errors="coerce").fillna(1).astype(int)
+            _dfo["valor_unit"] = pd.to_numeric(_dfo["valor_unit"], errors="coerce")
+        st.session_state[okey]  = _dfo
+        st.session_state[ohkey] = otr_hash
+
     if "valor_unit" not in st.session_state[key].columns:
         st.session_state[key]["valor_unit"] = float("nan")
 
-    st.markdown(f'<div class="sec-label">{label}</div>', unsafe_allow_html=True)
-    st.caption("Plancha/Coil→KG, Perfil/Tubo/Macizo→ML, Outro→U. $ / unit vacío = precio global.")
+    st.markdown(f'<div class="sec-label">{label} — FÓRMULA</div>', unsafe_allow_html=True)
+    st.caption("KG: Plancha/Coil → L×A×esp×8e-6 × waste. ML: Perfil/Tubo/Macizo → L/1000. $ / unit vacío = precio global.")
 
     edited = st.data_editor(
         st.session_state[key][_CAL_MAT_EDIT_COLS],
         key=f"editor_{key}",
-        use_container_width=True,
-        num_rows="dynamic",
-        hide_index=True,
+        use_container_width=True, num_rows="dynamic", hide_index=True,
         column_config={
             "parte":      st.column_config.TextColumn("Parte", width="medium"),
             "tipo":       st.column_config.SelectboxColumn("Tipo", options=_CAL_MAT_TIPO, width="small"),
@@ -436,16 +498,15 @@ def bom_editor(label, default_rows, key):
         },
     )
 
-    # Computed display (read-only)
     if isinstance(edited, pd.DataFrame) and not edited.empty:
         computed = _compute_bom_cal(edited.to_dict("records"), global_prices)
         total_clp = sum(int(r.get("total_clp") or 0) for r in computed)
         comp_df = pd.DataFrame([{
-            "Parte":      r.get("parte", ""),
-            "Unidad":     r.get("unidad", ""),
-            "Qty total":  r.get("qty_total", 0),
-            "$ / unit":   r.get("valor_unit", 0),
-            "Total $":    r.get("total_clp", 0),
+            "Parte":     r.get("parte", ""),
+            "Unidad":    r.get("unidad", ""),
+            "Qty total": r.get("qty_total", 0),
+            "$ / unit":  r.get("valor_unit", 0),
+            "Total $":   r.get("total_clp", 0),
         } for r in computed])
         st.dataframe(comp_df, use_container_width=True, hide_index=True,
             column_config={
@@ -453,11 +514,37 @@ def bom_editor(label, default_rows, key):
                 "$ / unit":  st.column_config.NumberColumn(format="$ %.0f"),
                 "Total $":   st.column_config.NumberColumn(format="$ %.0f"),
             })
-        # Attach computed total_clp to df so product_section can sum it
         edited = edited.copy()
         edited["total_clp"] = [r.get("total_clp", 0) for r in computed]
 
-    return edited
+    # Table 2: Otros
+    st.markdown('<div class="sec-label" style="margin-top:0.6rem;">OTROS MATERIALES — Herrajes / Accesorios / Componentes</div>', unsafe_allow_html=True)
+    st.caption("Manual: parte / cantidad / $ por unidad. Total = cant × valor_unit.")
+
+    otros_edited = st.data_editor(
+        st.session_state[okey][_CAL_OTROS_COLS],
+        key=f"otros_editor_{key}",
+        use_container_width=True, num_rows="dynamic", hide_index=True,
+        column_config={
+            "parte":      st.column_config.TextColumn("Parte", width="large"),
+            "cant":       st.column_config.NumberColumn("Cant", format="%d", step=1, min_value=1, width="small"),
+            "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %d", step=50, min_value=0, width="medium"),
+        },
+    )
+    if isinstance(otros_edited, pd.DataFrame) and not otros_edited.empty:
+        _o = otros_edited.copy()
+        _o["cant"]       = pd.to_numeric(_o["cant"],       errors="coerce").fillna(1)
+        _o["valor_unit"] = pd.to_numeric(_o["valor_unit"], errors="coerce").fillna(0)
+        _o["Total $"]    = (_o["cant"] * _o["valor_unit"]).round().astype(int)
+        _o_disp = _o[_o["parte"].fillna("").str.strip() != ""][["parte","cant","valor_unit","Total $"]]
+        if not _o_disp.empty:
+            st.dataframe(_o_disp, use_container_width=True, hide_index=True,
+                column_config={
+                    "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %.0f"),
+                    "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+                })
+
+    return edited, otros_edited
 
 # ─── Product input section ─────────────────────────────────────────────────────
 
@@ -531,8 +618,8 @@ def product_section(title, sku, comp_label, dims_defaults, mat_key, cons_key,
             x_active[flag] = checked
 
     # BOM
-    mat_df  = bom_editor("MATERIALES — BOM", mat_defaults,  mat_key)
-    cons_df = bom_editor("CONSUMIBLES",      cons_defaults, cons_key)
+    mat_df, mat_otros_df = bom_editor("MATERIALES — BOM", mat_defaults, mat_key)
+    cons_df, _           = bom_editor("CONSUMIBLES",      cons_defaults, cons_key)
 
     # Totals — use total_clp (new schema) with fallback to old "total" field
     if "total_clp" in mat_df.columns:
@@ -541,7 +628,13 @@ def product_section(title, sku, comp_label, dims_defaults, mat_key, cons_key,
         mat_total = int(mat_df["total"].fillna(0).sum())
     else:
         mat_total = 0
-    cons_total = int(cons_df["Total"].fillna(0).sum()) if "Total"  in cons_df.columns else 0
+    # Add otros total
+    if isinstance(mat_otros_df, pd.DataFrame) and not mat_otros_df.empty:
+        _oc = mat_otros_df.copy()
+        _oc["cant"]       = pd.to_numeric(_oc.get("cant",       pd.Series()), errors="coerce").fillna(1)
+        _oc["valor_unit"] = pd.to_numeric(_oc.get("valor_unit", pd.Series()), errors="coerce").fillna(0)
+        mat_total += int((_oc["cant"] * _oc["valor_unit"]).round().sum())
+    cons_total = int(cons_df["Total"].fillna(0).sum()) if "Total" in cons_df.columns else 0
 
     st.markdown(
         f'<div style="display:flex;gap:1rem;margin-top:0.5rem;flex-wrap:wrap;">'
@@ -562,7 +655,7 @@ def product_section(title, sku, comp_label, dims_defaults, mat_key, cons_key,
         "G": G, "D": D, "C": C, "c_count": c_count,
         "area": area, "e": e, "L": L, "W": W, "H": H,
         "x_active": x_active,
-        "mat_df": mat_df, "cons_df": cons_df,
+        "mat_df": mat_df, "mat_otros_df": mat_otros_df, "cons_df": cons_df,
         "mat_total": mat_total, "cons_total": cons_total,
         "total": mat_total + cons_total,
     }
@@ -2613,29 +2706,38 @@ def render_bom_entry(rules, profile_key):
 
             # ── BOM editor ────────────────────────────────────────────────────
             _mat_skey  = f"mat_{profile_key}_{comp}"
+            _otr_skey  = f"otr_{profile_key}_{comp}"
             _cons_skey = f"cons_{profile_key}_{comp}"
             _mat_hkey  = f"h_{_mat_skey}"
+            _otr_hkey  = f"h_{_otr_skey}"
             _cons_hkey = f"h_{_cons_skey}"
 
             _cons_default = saved_cons or [{"Producto":"","Proceso":"soldadura","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
 
             # Seed state from DB; invalidate when anchor changes
-            _mat_hash = hash(str(saved_mat))
+            _mat_hash  = hash(str(saved_mat))
             _cons_hash = hash(str(_cons_default))
+            _saved_otros_raw = anchor_row.get("bom_otros")
+            _otr_hash = hash(str(_saved_otros_raw))
+
             if st.session_state.get(_mat_hkey) != _mat_hash:
                 st.session_state[_mat_skey] = _cal_seed_df(saved_mat)
                 st.session_state[_mat_hkey] = _mat_hash
             if st.session_state.get(_cons_hkey) != _cons_hash or _cons_skey not in st.session_state:
                 st.session_state[_cons_skey] = pd.DataFrame(_cons_default)
                 st.session_state[_cons_hkey] = _cons_hash
+            if st.session_state.get(_otr_hkey) != _otr_hash or _otr_skey not in st.session_state:
+                st.session_state[_otr_skey] = _cal_seed_otros_df(_saved_otros_raw, saved_mat_json)
+                st.session_state[_otr_hkey] = _otr_hash
 
             if "valor_unit" not in st.session_state[_mat_skey].columns:
                 st.session_state[_mat_skey]["valor_unit"] = float("nan")
 
             _global_prices = load_material_prices() or _CAL_DEFAULT_PRICES
 
-            st.markdown('<div class="sec-label">MATERIALES — BOM</div>', unsafe_allow_html=True)
-            st.caption("Plancha/Coil→KG, Perfil/Tubo/Macizo→ML, Otro→U. $ / unit vacío = precio global.")
+            # Table 1: Formula
+            st.markdown('<div class="sec-label">MATERIALES — FÓRMULA (Plancha / Coil / Perfil / Tubo / Macizo)</div>', unsafe_allow_html=True)
+            st.caption("KG: Plancha/Coil → L×A×esp×8e-6 × waste. ML: Perfil/Tubo/Macizo → L/1000. $ / unit vacío = precio global.")
             mat_df = st.data_editor(
                 st.session_state[_mat_skey][_CAL_MAT_EDIT_COLS],
                 key=f"bomedit_{profile_key}_{comp}",
@@ -2672,6 +2774,34 @@ def render_bom_entry(rules, profile_key):
                         "Total $":   st.column_config.NumberColumn(format="$ %.0f"),
                     })
 
+            # Table 2: Otros
+            st.markdown('<div class="sec-label" style="margin-top:0.6rem;">OTROS MATERIALES — Herrajes / Accesorios / Componentes</div>', unsafe_allow_html=True)
+            st.caption("Manual: parte / cantidad / $ por unidad. Total = cant × valor_unit.")
+            otros_df = st.data_editor(
+                st.session_state[_otr_skey][_CAL_OTROS_COLS],
+                key=f"otroedit_{profile_key}_{comp}",
+                use_container_width=True, num_rows="dynamic", hide_index=True,
+                column_config={
+                    "parte":      st.column_config.TextColumn("Parte", width="large"),
+                    "cant":       st.column_config.NumberColumn("Cant", format="%d", step=1, min_value=1, width="small"),
+                    "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %d", step=50, min_value=0, width="medium"),
+                },
+            )
+            _cal_otros_total = 0
+            if isinstance(otros_df, pd.DataFrame) and not otros_df.empty:
+                _oo = otros_df.copy()
+                _oo["cant"]       = pd.to_numeric(_oo["cant"],       errors="coerce").fillna(1)
+                _oo["valor_unit"] = pd.to_numeric(_oo["valor_unit"], errors="coerce").fillna(0)
+                _oo["Total $"]    = (_oo["cant"] * _oo["valor_unit"]).round().astype(int)
+                _cal_otros_total  = int(_oo["Total $"].sum())
+                _oo_disp = _oo[_oo["parte"].fillna("").str.strip() != ""][["parte","cant","valor_unit","Total $"]]
+                if not _oo_disp.empty:
+                    st.dataframe(_oo_disp, use_container_width=True, hide_index=True,
+                        column_config={
+                            "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %.0f"),
+                            "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+                        })
+
             with st.form(f"bom_form_{profile_key}_{comp}"):
                 st.markdown('<div class="sec-label" style="margin-top:0.6rem;">CONSUMIBLES</div>', unsafe_allow_html=True)
                 cons_df = st.data_editor(
@@ -2690,10 +2820,10 @@ def render_bom_entry(rules, profile_key):
 
             # Process form submission outside the form context
             if save_clicked:
-                mat_total  = _cal_mat_total
+                mat_total  = _cal_mat_total + _cal_otros_total
                 cons_total = int(cons_df["Total"].fillna(0).sum()) if isinstance(cons_df, pd.DataFrame) and "Total" in cons_df.columns else 0
                 total      = mat_total + cons_total
-                _save_bom_to_db(selected_anchor, mat_df, cons_df)
+                _save_bom_to_db(selected_anchor, mat_df, cons_df, otros_df)
                 # Update universal driver scores + dims in DB from current inputs
                 _score_payload = {}
                 if G_new is not None: _score_payload["g_score"] = int(G_new)
@@ -2722,13 +2852,13 @@ def render_bom_entry(rules, profile_key):
                 rules["meta"]["last_updated"] = str(date.today())
                 save_rules(rules)
                 # Clear state so next render re-seeds from fresh DB data
-                for _k in [_mat_skey, _mat_hkey, _cons_skey, _cons_hkey]:
+                for _k in [_mat_skey, _mat_hkey, _otr_skey, _otr_hkey, _cons_skey, _cons_hkey]:
                     st.session_state.pop(_k, None)
                 st.success(f"✅ BOM guardado — {selected_anchor} ({comp})")
                 st.rerun()
             else:
                 # Show last-saved totals (update after next save)
-                mat_total  = int(mat_df["total"].fillna(0).sum())  if "total"  in mat_df.columns else 0
+                mat_total  = _cal_mat_total + _cal_otros_total
                 cons_total = int(cons_df["Total"].fillna(0).sum()) if "Total"  in cons_df.columns else 0
                 total      = mat_total + cons_total
 

@@ -320,8 +320,8 @@ import pandas as pd
 
 # ─── DB helpers (thin wrappers using db.py) ───────────────────────────────────
 
-def save_bom_db(handle: str, mat_rows: list, cons_rows: list):
-    _db_save_bom(handle, mat_rows, cons_rows)
+def save_bom_db(handle: str, mat_rows: list, cons_rows: list, otros_rows=None):
+    _db_save_bom(handle, mat_rows, cons_rows, otros_rows)
 
 
 def save_to_db(product: dict, razon: str, source_file: str, force_update: bool = False) -> tuple[bool, str]:
@@ -435,13 +435,17 @@ def complexity_options_for(perfil: str, rules: dict) -> list[str]:
 # ─── BOM editor widget (new schema) ──────────────────────────────────────────
 
 _BOM_EDIT_COLS    = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos", "valor_unit"]
-_BOM_TIPO_OPTIONS = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo", "Otro"]
+_BOM_TIPO_OPTIONS = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo"]  # "Otro" → Table 2
 _BOM_CAL_OPTIONS  = ["304", "201", "316", "430"]
+_BOM_OTROS_COLS   = ["parte", "cant", "valor_unit"]
 
 def _bom_empty_row() -> dict:
     return {"parte": "", "tipo": "Plancha", "calidad": "304",
             "esp_mm": float("nan"), "L_mm": float("nan"), "A_mm": float("nan"),
             "cant": 1, "simbolos": "", "valor_unit": float("nan")}
+
+def _bom_otros_empty() -> dict:
+    return {"parte": "", "cant": 1, "valor_unit": float("nan")}
 
 def _normalize_mat_row(r: dict) -> dict:
     """Accept both old-schema and new-schema rows; always return new-schema."""
@@ -460,10 +464,13 @@ def _normalize_mat_row(r: dict) -> dict:
     return base
 
 
-def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix: str):
+def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix: str,
+                      saved_otros: list | None = None):
     """
-    Inline BOM editor — new schema (parte/tipo/calidad/esp_mm/L_mm/A_mm/cant/simbolos/valor_unit).
-    Returns (mat_rows, cons_rows, total_clp).
+    Inline BOM editor — two separate tables:
+    Table 1 (formula): Plancha/Coil/Perfil/Tubo/Macizo — formula-computed qty.
+    Table 2 (otros):   Hardware, accesorios — parte/cant/valor_unit → total.
+    Returns (mat_rows, cons_rows, otros_rows, total_clp).
     """
     global_prices = load_material_prices() or DEFAULT_GLOBAL_PRICES
 
@@ -475,16 +482,31 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         "Precio_u":  st.column_config.NumberColumn("Precio u. $", min_value=0, step=1, format="%.0f"),
     }
 
-    mat_default  = [_normalize_mat_row(r) for r in saved_mat] if saved_mat else [_bom_empty_row()]
+    # Filter "Otro" rows out of formula table (they move to Table 2)
+    mat_formula  = [r for r in saved_mat if (r.get("tipo") or "Plancha").strip().lower() != "otro"]
+    mat_default  = [_normalize_mat_row(r) for r in mat_formula] if mat_formula else [_bom_empty_row()]
     cons_default = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0}]
+
+    # Seed otros: from explicit saved_otros, or migrate "Otro" rows from saved_mat
+    if saved_otros:
+        otros_default = saved_otros
+    else:
+        otros_default = [
+            {"parte": r.get("parte",""), "cant": int(r.get("cant",1) or 1),
+             "valor_unit": float(r.get("valor_unit") or 0) or float("nan")}
+            for r in saved_mat if (r.get("tipo") or "").strip().lower() == "otro"
+        ] or [_bom_otros_empty()]
 
     _mat_skey  = f"df_bom_mat_{key_prefix}"
     _mat_hkey  = f"hash_bom_mat_{key_prefix}"
     _cons_skey = f"df_bom_cons_{key_prefix}"
     _cons_hkey = f"hash_bom_cons_{key_prefix}"
+    _otr_skey  = f"df_bom_otr_{key_prefix}"
+    _otr_hkey  = f"hash_bom_otr_{key_prefix}"
 
     _mat_hash  = hash(str(mat_default))
     _cons_hash = hash(str(cons_default))
+    _otr_hash  = hash(str(otros_default))
 
     if st.session_state.get(_mat_hkey) != _mat_hash or _mat_skey not in st.session_state:
         df = pd.DataFrame(mat_default)
@@ -498,18 +520,23 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         st.session_state[_cons_skey] = pd.DataFrame(cons_default)
         st.session_state[_cons_hkey] = _cons_hash
 
-    # Ensure valor_unit column exists (in case seeded before schema update)
+    if st.session_state.get(_otr_hkey) != _otr_hash or _otr_skey not in st.session_state:
+        _dfo = pd.DataFrame(otros_default)
+        _dfo["cant"]       = pd.to_numeric(_dfo["cant"],       errors="coerce").fillna(1).astype(int)
+        _dfo["valor_unit"] = pd.to_numeric(_dfo["valor_unit"], errors="coerce")
+        st.session_state[_otr_skey] = _dfo
+        st.session_state[_otr_hkey] = _otr_hash
+
     if "valor_unit" not in st.session_state[_mat_skey].columns:
         st.session_state[_mat_skey]["valor_unit"] = float("nan")
 
-    st.caption("Tipo Plancha/Coil → KG (L×A×esp). Perfil/Tubo/Macizo → ML (L/1000). Otro → Unidades manuales. $ / unit vacío = precio global.")
+    # ── Table 1: Formula ──────────────────────────────────────────────────────
+    st.caption("KG: Plancha/Coil → L×A×esp×8e-6 × waste. ML: Perfil/Tubo/Macizo → L/1000. $ / unit vacío = precio global.")
 
     mat_df = st.data_editor(
         st.session_state[_mat_skey][_BOM_EDIT_COLS],
         key=f"bom_mat_editor_{key_prefix}",
-        use_container_width=True,
-        num_rows="dynamic",
-        hide_index=True,
+        use_container_width=True, num_rows="dynamic", hide_index=True,
         column_config={
             "parte":      st.column_config.TextColumn("Parte", width="medium"),
             "tipo":       st.column_config.SelectboxColumn("Tipo", options=_BOM_TIPO_OPTIONS, width="small"),
@@ -523,31 +550,61 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         },
     )
 
-    # Computed summary (read-only)
     computed = []
     mat_total = 0
     if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
         computed = compute_bom(mat_df.to_dict("records"), global_prices)
         mat_total = sum(int(r.get("total_clp") or 0) for r in computed)
         comp_df = pd.DataFrame([{
-            "Parte":      r.get("parte", ""),
-            "Unidad":     r.get("unidad", ""),
-            "kg bruto/u": r.get("kg_bruto"),
-            "Qty total":  r.get("qty_total", 0),
-            "$ / unit":   r.get("valor_unit", 0),
-            "Total $":    r.get("total_clp", 0),
+            "Parte":     r.get("parte", ""),
+            "Unidad":    r.get("unidad", ""),
+            "Qty total": r.get("qty_total", 0),
+            "$ / unit":  r.get("valor_unit", 0),
+            "Total $":   r.get("total_clp", 0),
         } for r in computed])
         st.dataframe(comp_df, use_container_width=True, hide_index=True,
             column_config={
-                "kg bruto/u": st.column_config.NumberColumn(format="%.4f"),
-                "Qty total":  st.column_config.NumberColumn(format="%.4f"),
-                "$ / unit":   st.column_config.NumberColumn(format="$ %.0f"),
-                "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+                "Qty total": st.column_config.NumberColumn(format="%.4f"),
+                "$ / unit":  st.column_config.NumberColumn(format="$ %.0f"),
+                "Total $":   st.column_config.NumberColumn(format="$ %.0f"),
             })
         warns = [f"**{r.get('parte','?')}:** {w}" for r in computed for w in (r.get("warnings") or [])]
         if warns:
             st.warning("\n".join(f"- {w}" for w in warns))
 
+    # ── Table 2: Otros ────────────────────────────────────────────────────────
+    st.markdown("**🔩 Otros materiales** — Herrajes / Accesorios / Componentes")
+    st.caption("Manual: parte / cantidad / $ por unidad. Total = cant × valor_unit.")
+
+    otros_df = st.data_editor(
+        st.session_state[_otr_skey][_BOM_OTROS_COLS],
+        key=f"bom_otros_editor_{key_prefix}",
+        use_container_width=True, num_rows="dynamic", hide_index=True,
+        column_config={
+            "parte":      st.column_config.TextColumn("Parte", width="large"),
+            "cant":       st.column_config.NumberColumn("Cant", format="%d", step=1, min_value=1, width="small"),
+            "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %d", step=50, min_value=0, width="medium"),
+        },
+    )
+
+    otros_total = 0
+    otros_rows  = otros_default
+    if isinstance(otros_df, pd.DataFrame) and not otros_df.empty:
+        _o = otros_df.copy()
+        _o["cant"]       = pd.to_numeric(_o["cant"],       errors="coerce").fillna(1)
+        _o["valor_unit"] = pd.to_numeric(_o["valor_unit"], errors="coerce").fillna(0)
+        _o["Total $"]    = (_o["cant"] * _o["valor_unit"]).round().astype(int)
+        otros_total = int(_o["Total $"].sum())
+        _o_disp = _o[_o["parte"].fillna("").str.strip() != ""][["parte","cant","valor_unit","Total $"]]
+        if not _o_disp.empty:
+            st.dataframe(_o_disp, use_container_width=True, hide_index=True,
+                column_config={
+                    "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %.0f"),
+                    "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+                })
+        otros_rows = _o[["parte","cant","valor_unit"]].to_dict("records")
+
+    # ── Consumibles ───────────────────────────────────────────────────────────
     st.markdown("**🔩 Consumibles**")
     cons_df = st.data_editor(
         st.session_state[_cons_skey],
@@ -564,13 +621,14 @@ def bom_editor_widget(handle: str, saved_mat: list, saved_cons: list, key_prefix
         cons_total = int(_c["Total"].sum())
         cons_rows  = _c.to_dict("records")
 
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Material", f"${mat_total:,}")
-    col_b.metric("Consumibles", f"${cons_total:,}")
-    col_c.metric("Total directo", f"${mat_total + cons_total:,}")
+    col_a, col_b, col_c, col_d = st.columns(4)
+    col_a.metric("Fórmula",    f"${mat_total:,}")
+    col_b.metric("Otros",      f"${otros_total:,}")
+    col_c.metric("Consumibles",f"${cons_total:,}")
+    col_d.metric("Total directo", f"${mat_total + otros_total + cons_total:,}")
 
     mat_rows = computed if computed else mat_df.to_dict("records") if isinstance(mat_df, pd.DataFrame) else mat_default
-    return mat_rows, cons_rows, mat_total + cons_total
+    return mat_rows, cons_rows, otros_rows, mat_total + otros_total + cons_total
 
 
 def show_process_panel(perfil: str, complejidad: str, rules: dict):
@@ -987,14 +1045,15 @@ def main():
             st.subheader("BOM de costos directos")
             _ext_mat  = _bom_from_extraction(extraction)
             _proc_cons = _cons_from_rules(perfil, complejidad, rules)
-            mat_rows, cons_rows, bom_total = bom_editor_widget(
+            mat_rows, cons_rows, otros_rows, bom_total = bom_editor_widget(
                 handle or "nuevo", _ext_mat, _proc_cons, key_prefix="new_product"
             )
 
             st.divider()
             st.subheader("Costo total estimado")
             _cost_summary(perfil, complejidad,
-                          sum(r.get("total_clp", r.get("total", 0)) for r in mat_rows),
+                          sum(r.get("total_clp", r.get("total", 0)) for r in mat_rows)
+                          + sum(int(r.get("cant",1)) * float(r.get("valor_unit") or 0) for r in otros_rows),
                           sum(r.get("Total",0) for r in cons_rows),
                           bom_total, rules)
 
@@ -1018,7 +1077,7 @@ def main():
                 }
                 ok, msg = save_to_db(product, f"Ingreso desde plano {filename}", filename, force_update=True)
                 if ok:
-                    save_bom_db(handle, mat_rows, cons_rows)
+                    save_bom_db(handle, mat_rows, cons_rows, otros_rows)
                     get_sb().table("products").update({
                         "c_value": c_val, "x_flags": json.dumps(x_active),
                     }).eq("handle", handle).execute()
@@ -1106,7 +1165,7 @@ def main():
                 st.caption("🔍 Materiales pre-cargados desde Vision. Consumibles según procesos asignados.")
             elif saved_mat_base:
                 st.caption("Materiales del producto base. Consumibles según procesos asignados.")
-            mat_rows_d, cons_rows_d, bom_total_d = bom_editor_widget(
+            mat_rows_d, cons_rows_d, otros_rows_d, bom_total_d = bom_editor_widget(
                 new_handle_d or "derivado",
                 _init_mat_d, _proc_cons_d,
                 key_prefix="derive_product"
@@ -1115,7 +1174,8 @@ def main():
             st.divider()
             st.subheader("Costo total estimado")
             _cost_summary(perfil_d, comp_d,
-                          sum(r.get("total_clp", r.get("total", 0)) for r in mat_rows_d),
+                          sum(r.get("total_clp", r.get("total", 0)) for r in mat_rows_d)
+                          + sum(int(r.get("cant",1)) * float(r.get("valor_unit") or 0) for r in otros_rows_d),
                           sum(r.get("Total",0) for r in cons_rows_d),
                           bom_total_d, rules)
 
@@ -1143,7 +1203,7 @@ def main():
                     f"Derivado de {base_row['handle']}",
                     filename_d or "derivado", force_update=True)
                 if ok_d:
-                    save_bom_db(new_handle_d, mat_rows_d, cons_rows_d)
+                    save_bom_db(new_handle_d, mat_rows_d, cons_rows_d, otros_rows_d)
                     get_sb().table("products").update({
                         "c_value": c_val_d, "x_flags": json.dumps(x_active_d),
                     }).eq("handle", new_handle_d).execute()
@@ -1229,9 +1289,10 @@ def main():
             row_b.get("perfil_proceso",""), row_b.get("complejidad",""), rules
         )
 
-        mat_rows_b, cons_rows_b, bom_total_b = bom_editor_widget(
+        mat_rows_b, cons_rows_b, otros_rows_b, bom_total_b = bom_editor_widget(
             row_b["handle"], _init_mat_b, _init_cons_b,
-            key_prefix=f"bom_{row_b['handle']}"
+            key_prefix=f"bom_{row_b['handle']}",
+            saved_otros=json.loads(row_b.get("bom_otros","[]") or "[]") if row_b.get("bom_otros") else None,
         )
 
         st.divider()
@@ -1244,7 +1305,7 @@ def main():
         st.divider()
         if st.button("💾 Guardar BOM real", type="primary",
                      use_container_width=True, key="save_bom_existing"):
-            save_bom_db(row_b["handle"], mat_rows_b, cons_rows_b)
+            save_bom_db(row_b["handle"], mat_rows_b, cons_rows_b, otros_rows_b)
             anchor_note = " (ancla actualizada — los productos extrapolados se recalcularán)" if is_anchor else ""
             st.success(f"✅ BOM guardado para **{row_b['handle']}**  ·  Total: ${bom_total_b:,}{anchor_note}")
             st.cache_data.clear()

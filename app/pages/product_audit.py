@@ -221,13 +221,13 @@ def _all_products() -> list[dict]:
     return get_sb().table("products").select(
         "handle,descripcion_web,perfil_proceso,complejidad,familia,subfamilia,"
         "dim_l_mm,dim_w_mm,dim_h_mm,dim_espesor_mm,g_score,d_score,"
-        "c_value,x_flags,bom_materials,bom_consumables,is_anchor,image_url"
+        "c_value,x_flags,bom_materials,bom_consumables,bom_otros,is_anchor,image_url"
     ).order("perfil_proceso,handle").execute().data or []
 
 @st.cache_data(ttl=20)
 def _get_product(handle: str) -> dict | None:
     rows = get_sb().table("products").select(
-        "handle,dim_l_mm,dim_w_mm,dim_h_mm,dim_espesor_mm,bom_materials,bom_consumables"
+        "handle,dim_l_mm,dim_w_mm,dim_h_mm,dim_espesor_mm,bom_materials,bom_consumables,bom_otros"
     ).eq("handle", handle).limit(1).execute().data
     return rows[0] if rows else None
 
@@ -684,13 +684,17 @@ def render_bom_extrapolated(
 
 
 _AUDIT_MAT_EDIT_COLS = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos", "valor_unit"]
-_AUDIT_MAT_TIPO  = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo", "Otro"]
+_AUDIT_MAT_TIPO  = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo"]  # "Otro" moved to Table 2
 _AUDIT_MAT_CAL   = ["304", "201", "316", "430"]
+_AUDIT_OTROS_COLS = ["parte", "cant", "valor_unit"]
 
 def _audit_mat_empty():
     return {"parte": "", "tipo": "Plancha", "calidad": "304",
             "esp_mm": float("nan"), "L_mm": float("nan"), "A_mm": float("nan"),
             "cant": 1, "simbolos": "", "valor_unit": float("nan")}
+
+def _audit_otros_empty():
+    return {"parte": "", "cant": 1, "valor_unit": float("nan")}
 
 def _audit_migrate(r: dict) -> dict:
     if "parte" in r:
@@ -704,19 +708,36 @@ def _audit_migrate(r: dict) -> dict:
     base["valor_unit"] = float(r.get("precio_kg", float("nan")) or float("nan"))
     return base
 
+def _audit_seed_otros(product: dict) -> list:
+    """Load otros from bom_otros column; fall back to 'Otro' rows migrated from bom_materials."""
+    raw = product.get("bom_otros")
+    if raw and raw not in ("[]", "null", ""):
+        rows = _pj(raw, [])
+        if rows:
+            return rows
+    # Migrate tipo="Otro" rows from bom_materials into Table 2
+    mat = _pj(product.get("bom_materials"), [])
+    otros = [
+        {"parte": r.get("parte", ""), "cant": int(r.get("cant", 1) or 1),
+         "valor_unit": float(r.get("valor_unit") or 0) or float("nan")}
+        for r in mat if (r.get("tipo") or "").strip().lower() == "otro"
+    ]
+    return otros if otros else [_audit_otros_empty()]
+
 
 def render_bom_editable(product: dict, system_cons: list):
     """
     Editable BOM for anchor/editado products.
-    Uses new schema: parte/tipo/calidad/esp_mm/L_mm/A_mm/cant/simbolos.
-    Computed columns shown as read-only table below editor (no write-back loop).
+    Table 1 (formula): Plancha/Coil/Perfil/Tubo/Macizo — formula-computed qty.
+    Table 2 (otros):   Hardware, fittings, components — parte/cant/valor_unit → total.
     """
     handle    = product["handle"]
     saved_mat = _pj(product.get("bom_materials"),  [])
     saved_con = _pj(product.get("bom_consumables"), [])
 
-    # ── Materials ─────────────────────────────────────────────────────────────
-    mat_init = [_audit_migrate(r) for r in saved_mat] or [_audit_mat_empty()]
+    # ── Table 1: Formula materials (filter out any "Otro" rows → those go to Table 2) ──
+    mat_formula = [r for r in saved_mat if (r.get("tipo") or "Plancha").strip().lower() != "otro"]
+    mat_init = [_audit_migrate(r) for r in mat_formula] or [_audit_mat_empty()]
     ms, mh = f"aud_mat_{handle}", f"aud_mh_{handle}"
     mhash  = hash(str(mat_init))
     if st.session_state.get(mh) != mhash:
@@ -732,8 +753,8 @@ def render_bom_editable(product: dict, system_cons: list):
 
     global_prices = load_material_prices() or DEFAULT_GLOBAL_PRICES
 
-    st.markdown('<div class="sec-label">MATERIALES</div>', unsafe_allow_html=True)
-    st.caption("Plancha/Coil→KG, Perfil/Tubo/Macizo→ML, Otro→U. $ / unit vacío = precio global.")
+    st.markdown('<div class="sec-label">MATERIALES — FÓRMULA (Plancha / Coil / Perfil / Tubo / Macizo)</div>', unsafe_allow_html=True)
+    st.caption("KG: Plancha/Coil → L×A×esp×8e-6 × waste. ML: Perfil/Tubo/Macizo → L/1000. $ / unit vacío = precio global.")
 
     edited_mat = st.data_editor(
         st.session_state[ms][_AUDIT_MAT_EDIT_COLS],
@@ -752,7 +773,7 @@ def render_bom_editable(product: dict, system_cons: list):
         },
     )
 
-    # Computed display (read-only — no write-back loop)
+    # Computed display (read-only)
     computed = []
     mat_total = 0
     if isinstance(edited_mat, pd.DataFrame) and not edited_mat.empty:
@@ -772,21 +793,78 @@ def render_bom_editable(product: dict, system_cons: list):
                 "Total $":   st.column_config.NumberColumn(format="$ %.0f"),
             })
 
+    # ── Table 2: Otros — herrajes, accesorios, componentes ────────────────────
+    st.markdown(
+        '<div class="sec-label" style="margin-top:0.8rem;">'
+        'OTROS MATERIALES — Herrajes / Accesorios / Componentes</div>',
+        unsafe_allow_html=True
+    )
+    st.caption("Manual: parte / cantidad / $ por unidad → total = cant × valor_unit")
+
+    otros_init = _audit_seed_otros(product)
+    oms, omh = f"aud_otros_{handle}", f"aud_otroh_{handle}"
+    ohash = hash(str(otros_init))
+    if st.session_state.get(omh) != ohash:
+        _dfo = pd.DataFrame(otros_init)
+        _dfo["cant"]       = pd.to_numeric(_dfo["cant"],       errors="coerce").fillna(1).astype(int)
+        _dfo["valor_unit"] = pd.to_numeric(_dfo["valor_unit"], errors="coerce")
+        st.session_state[oms] = _dfo
+        st.session_state[omh] = ohash
+
+    edited_otros = st.data_editor(
+        st.session_state[oms][_AUDIT_OTROS_COLS],
+        key=f"aud_otros_edit_{handle}",
+        use_container_width=True, num_rows="dynamic", hide_index=True,
+        column_config={
+            "parte":      st.column_config.TextColumn("Parte", width="large"),
+            "cant":       st.column_config.NumberColumn("Cant", format="%d", step=1, min_value=1, width="small"),
+            "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %d", step=50, min_value=0, width="medium"),
+        },
+    )
+
+    otros_total = 0
+    if isinstance(edited_otros, pd.DataFrame) and not edited_otros.empty:
+        _o = edited_otros.copy()
+        _o["cant"]       = pd.to_numeric(_o["cant"],       errors="coerce").fillna(1)
+        _o["valor_unit"] = pd.to_numeric(_o["valor_unit"], errors="coerce").fillna(0)
+        _o["Total $"]    = (_o["cant"] * _o["valor_unit"]).round().astype(int)
+        otros_total = int(_o["Total $"].sum())
+        _o_disp = _o[_o["parte"].fillna("").str.strip() != ""][["parte","cant","valor_unit","Total $"]]
+        if not _o_disp.empty:
+            st.dataframe(_o_disp, use_container_width=True, hide_index=True,
+                column_config={
+                    "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %.0f"),
+                    "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+                })
+
+    # ── Save button ───────────────────────────────────────────────────────────
     col_tot, col_save = st.columns([3,1])
     col_tot.markdown(
         f'<div style="font-size:0.85rem;padding:0.3rem 0;">'
-        f'<span style="color:#768390;">Materiales: </span>'
-        f'<span style="color:#3fb950;font-weight:700;">{_clp(mat_total)}</span></div>',
+        f'<span style="color:#768390;">Fórmula: </span>'
+        f'<span style="color:#3fb950;font-weight:700;">{_clp(mat_total)}</span>'
+        f'<span style="color:#768390;"> · Otros: </span>'
+        f'<span style="color:#3fb950;font-weight:700;">{_clp(otros_total)}</span>'
+        f'<span style="color:#768390;"> · Total mat: </span>'
+        f'<span style="color:#3fb950;font-weight:700;">{_clp(mat_total + otros_total)}</span>'
+        f'</div>',
         unsafe_allow_html=True
     )
     if col_save.button("💾 Guardar materiales", key=f"aud_savmat_{handle}", type="primary"):
         save_rows = computed if computed else (
             edited_mat.to_dict("records") if isinstance(edited_mat, pd.DataFrame) else mat_init
         )
-        _save_bom_db(handle, save_rows, saved_con)
+        otros_save = (
+            edited_otros[_AUDIT_OTROS_COLS].to_dict("records")
+            if isinstance(edited_otros, pd.DataFrame) else otros_init
+        )
+        _save_bom_db(handle, save_rows, saved_con, otros_rows=otros_save)
         _all_products.clear(); _get_product.clear()
-        st.session_state.pop(mh, None)  # bust hash so re-seeds from DB
+        st.session_state.pop(mh, None)
+        st.session_state.pop(omh, None)
         st.success("✅ Materiales guardados"); st.rerun()
+
+    mat_total = mat_total + otros_total
 
     # ── Consumables (seeded from system algorithm) ────────────────────────────
     # Use saved_con if it exists, otherwise fall back to system_cons

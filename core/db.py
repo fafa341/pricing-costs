@@ -132,8 +132,8 @@ def search_products(query: str, limit: int = 50) -> list[dict]:
     """Full-text-ish search on handle + descripcion_web."""
     sb = get_sb()
     # PostgREST ilike filter — two separate queries OR-ed
-    r1 = sb.table("products").select("handle,descripcion_web,perfil_proceso,complejidad,g_score,d_score,dim_l_mm,dim_w_mm,dim_h_mm,dim_espesor_mm,image_url,bom_materials,bom_consumables,is_anchor").ilike("handle", f"%{query}%").limit(limit).execute()
-    r2 = sb.table("products").select("handle,descripcion_web,perfil_proceso,complejidad,g_score,d_score,dim_l_mm,dim_w_mm,dim_h_mm,dim_espesor_mm,image_url,bom_materials,bom_consumables,is_anchor").ilike("descripcion_web", f"%{query}%").limit(limit).execute()
+    r1 = sb.table("products").select("handle,descripcion_web,perfil_proceso,complejidad,g_score,d_score,dim_l_mm,dim_w_mm,dim_h_mm,dim_espesor_mm,image_url,bom_materials,bom_consumables,bom_otros,is_anchor").ilike("handle", f"%{query}%").limit(limit).execute()
+    r2 = sb.table("products").select("handle,descripcion_web,perfil_proceso,complejidad,g_score,d_score,dim_l_mm,dim_w_mm,dim_h_mm,dim_espesor_mm,image_url,bom_materials,bom_consumables,bom_otros,is_anchor").ilike("descripcion_web", f"%{query}%").limit(limit).execute()
     seen = {}
     for row in (r1.data or []) + (r2.data or []):
         seen[row["handle"]] = _from_sb(row)
@@ -184,12 +184,20 @@ def save_product_batch(updates: list[dict]) -> None:
     load_all_products.clear()
 
 
-def save_bom(handle: str, mat_rows: list, cons_rows: list) -> None:
-    """Persist BOM materials + consumables for a product."""
-    get_sb().table("products").update({
+def save_bom(handle: str, mat_rows: list, cons_rows: list, otros_rows=None) -> None:
+    """Persist BOM materials + consumables (+ otros hardware) for a product."""
+    payload = {
         "bom_materials":   json.dumps(mat_rows,  ensure_ascii=False),
         "bom_consumables": json.dumps(cons_rows, ensure_ascii=False),
-    }).eq("handle", handle).execute()
+    }
+    if otros_rows is not None:
+        payload["bom_otros"] = json.dumps(otros_rows, ensure_ascii=False)
+    try:
+        get_sb().table("products").update(payload).eq("handle", handle).execute()
+    except Exception:
+        # bom_otros column may not exist yet — save without it
+        payload.pop("bom_otros", None)
+        get_sb().table("products").update(payload).eq("handle", handle).execute()
     load_all_products.clear()
 
 

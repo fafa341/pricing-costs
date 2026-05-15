@@ -289,12 +289,37 @@ def save_bom(handle: str, mat_rows: list, cons_rows: list):
 
 
 _MAT_EDIT_COLS   = ["parte", "tipo", "calidad", "esp_mm", "L_mm", "A_mm", "cant", "simbolos", "valor_unit"]
-_MAT_TIPO_OPTIONS    = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo", "Otro"]
+_MAT_TIPO_OPTIONS    = ["Plancha", "Coil", "Perfil", "Tubo", "Macizo"]  # "Otro" → Table 2
 _MAT_CALIDAD_OPTIONS = ["304", "201", "316", "430"]
+_OTROS_COLS = ["parte", "cant", "valor_unit"]
 
 def _mat_empty_row() -> dict:
     return {"parte": "", "tipo": "Plancha", "calidad": "304",
             "esp_mm": None, "L_mm": None, "A_mm": None, "cant": 1, "simbolos": "", "valor_unit": None}
+
+def _otros_empty_row() -> dict:
+    return {"parte": "", "cant": 1, "valor_unit": float("nan")}
+
+def _seed_otros_from_product(row: dict) -> list:
+    """Load bom_otros column; fall back to migrating 'Otro' tipo rows from bom_materials."""
+    raw = row.get("bom_otros")
+    if isinstance(raw, str) and raw not in ("[]", "null", ""):
+        try:
+            rows = json.loads(raw)
+            if rows:
+                return rows
+        except Exception:
+            pass
+    elif isinstance(raw, list) and raw:
+        return raw
+    # Migrate tipo="Otro" rows from bom_materials
+    mat = json.loads(row.get("bom_materials", "[]") or "[]")
+    otros = [
+        {"parte": r.get("parte", ""), "cant": int(r.get("cant", 1) or 1),
+         "valor_unit": float(r.get("valor_unit") or 0) or float("nan")}
+        for r in mat if (r.get("tipo") or "").strip().lower() == "otro"
+    ]
+    return otros if otros else [_otros_empty_row()]
 
 def _mat_full_row() -> dict:
     """Empty row with all keys (editable + computed) for storage."""
@@ -320,32 +345,34 @@ def _compute_bom_display(edit_rows: list[dict], global_prices: dict | None = Non
 
 def product_bom_expander(row: dict, key_prefix: str = "bom"):
     """
-    Inline BOM editor.
-    FIX: editable and computed columns are SEPARATED.
-    - data_editor only shows editable input columns → no reactive write-back loop
-    - Computed table (kg, sku, total) is rendered BELOW using st.dataframe (read-only)
-    - session_state is initialized ONCE from DB data; data_editor manages its own state
-    - Save button reads data_editor return value directly
+    Inline BOM editor — two separate tables:
+    Table 1 (formula): Plancha/Coil/Perfil/Tubo/Macizo — formula qty + global price lookup.
+    Table 2 (otros):   Hardware, accesorios, componentes — parte/cant/valor_unit → total.
     """
     handle     = row.get("handle", "")
     saved_mat  = json.loads(row.get("bom_materials",  "[]") or "[]")
     saved_cons = json.loads(row.get("bom_consumables","[]") or "[]")
 
-    mat_init  = [_migrate_mat_row(r) for r in saved_mat] or [_mat_empty_row()]
-    cons_init = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
+    # Filter formula rows only (tipo != "Otro") for Table 1
+    mat_formula   = [r for r in saved_mat if (r.get("tipo") or "Plancha").strip().lower() != "otro"]
+    mat_init      = [_migrate_mat_row(r) for r in mat_formula] or [_mat_empty_row()]
+    cons_init     = saved_cons or [{"Producto":"","Proceso":"","Cantidad":0,"Unidad":"u","Precio_u":0,"Total":0}]
+    otros_init    = _seed_otros_from_product(row)
 
     prefix    = f"{key_prefix}_{handle}"
     _mat_ikey = f"mat_init_{prefix}"
     _mat_ihsh = f"mat_ihsh_{prefix}"
     _con_ikey = f"con_init_{prefix}"
     _con_ihsh = f"con_ihsh_{prefix}"
+    _otr_ikey = f"otr_init_{prefix}"
+    _otr_ihsh = f"otr_ihsh_{prefix}"
 
-    # Seed ONCE — only re-seed when DB data changes (after a save)
-    mat_hash  = hash(str(mat_init))
-    cons_hash = hash(str(cons_init))
+    mat_hash   = hash(str(mat_init))
+    cons_hash  = hash(str(cons_init))
+    otros_hash = hash(str(otros_init))
+
     if st.session_state.get(_mat_ihsh) != mat_hash:
         df = pd.DataFrame(mat_init)
-        # Cast numeric columns to float so data_editor renders them as editable
         for _col in ("esp_mm", "L_mm", "A_mm", "valor_unit"):
             if _col in df.columns:
                 df[_col] = pd.to_numeric(df[_col], errors="coerce")
@@ -356,24 +383,26 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
     if st.session_state.get(_con_ihsh) != cons_hash:
         st.session_state[_con_ikey] = pd.DataFrame(cons_init)
         st.session_state[_con_ihsh] = cons_hash
+    if st.session_state.get(_otr_ihsh) != otros_hash:
+        _dfo = pd.DataFrame(otros_init)
+        _dfo["cant"]       = pd.to_numeric(_dfo["cant"],       errors="coerce").fillna(1).astype(int)
+        _dfo["valor_unit"] = pd.to_numeric(_dfo["valor_unit"], errors="coerce")
+        st.session_state[_otr_ikey] = _dfo
+        st.session_state[_otr_ihsh] = otros_hash
 
-    # Load global prices (Supabase → fallback to hardcoded defaults)
-    global_prices = load_material_prices() or DEFAULT_GLOBAL_PRICES
-
-    # ── Materiales — editable columns only ───────────────────────────────────
-    st.markdown('<div class="dulox-section-label" style="margin-bottom:0.35rem;">MATERIALES (BOM)</div>', unsafe_allow_html=True)
-    st.caption("Tipo Plancha/Coil → KG (L×A×esp). Perfil/Tubo/Macizo → ML (L/1000). Otro → Unidades manuales. Precio/unit vacío = precio global.")
-
-    # Ensure valor_unit column exists in session df (needed after migration)
     if "valor_unit" not in st.session_state[_mat_ikey].columns:
         st.session_state[_mat_ikey]["valor_unit"] = None
+
+    global_prices = load_material_prices() or DEFAULT_GLOBAL_PRICES
+
+    # ── Table 1: Formula materials ────────────────────────────────────────────
+    st.markdown('<div class="dulox-section-label" style="margin-bottom:0.35rem;">MATERIALES — FÓRMULA (Plancha / Coil / Perfil / Tubo / Macizo)</div>', unsafe_allow_html=True)
+    st.caption("KG: Plancha/Coil → L×A×esp×8e-6 × waste. ML: Perfil/Tubo/Macizo → L/1000. $ / unit vacío = precio global.")
 
     mat_df = st.data_editor(
         st.session_state[_mat_ikey][_MAT_EDIT_COLS],
         key=f"bomedit_mat_{prefix}",
-        use_container_width=True,
-        num_rows="dynamic",
-        hide_index=True,
+        use_container_width=True, num_rows="dynamic", hide_index=True,
         column_config={
             "parte":      st.column_config.TextColumn("Parte", width="medium"),
             "tipo":       st.column_config.SelectboxColumn("Tipo", options=_MAT_TIPO_OPTIONS, width="small"),
@@ -386,31 +415,22 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
             "valor_unit": st.column_config.NumberColumn("$ / unit", help="Override precio global. Vacío = usa precio global.", format="$ %d", step=50, min_value=0, width="small"),
         },
     )
-    # data_editor manages its own state — do NOT write mat_df back to session_state here
-    # We only read it for display and for the save button
 
-    # ── Computed summary — rendered from return value, not from session_state ─
     if isinstance(mat_df, pd.DataFrame) and not mat_df.empty:
         computed, mat_total = _compute_bom_display(mat_df.to_dict("records"), global_prices)
         comp_df = pd.DataFrame([{
-            "Parte":       r.get("parte", ""),
-            "SKU":         r.get("sku_material", "—") or "—",
-            "Unidad":      r.get("unidad", ""),
-            "kg bruto/u":  r.get("kg_bruto"),       # None for ML/U rows → renders blank
-            "Waste ×":     r.get("waste_factor"),    # None for ML/U rows → renders blank
-            "Qty total":   r.get("qty_total", 0),
-            "$ / unit":    r.get("valor_unit", 0),
-            "Total $":     r.get("total_clp", 0),
+            "Parte":      r.get("parte", ""),
+            "Unidad":     r.get("unidad", ""),
+            "Qty total":  r.get("qty_total", 0),
+            "$ / unit":   r.get("valor_unit", 0),
+            "Total $":    r.get("total_clp", 0),
         } for r in computed])
         st.dataframe(comp_df, use_container_width=True, hide_index=True,
             column_config={
-                "kg bruto/u": st.column_config.NumberColumn(format="%.4f"),
-                "Waste ×":    st.column_config.NumberColumn(format="%.2f"),
-                "Qty total":  st.column_config.NumberColumn(format="%.4f"),
-                "$ / unit":   st.column_config.NumberColumn(format="$ %.0f"),
-                "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+                "Qty total": st.column_config.NumberColumn(format="%.4f"),
+                "$ / unit":  st.column_config.NumberColumn(format="$ %.0f"),
+                "Total $":   st.column_config.NumberColumn(format="$ %.0f"),
             })
-        # Warnings
         warns = [f"**{r.get('parte','?')}:** {w}" for r in computed for w in (r.get("warnings") or [])]
         if warns:
             st.warning("\n".join(f"- {w}" for w in warns))
@@ -418,14 +438,46 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
         mat_total = 0
         computed  = []
 
+    # ── Table 2: Otros — herrajes, accesorios, componentes ───────────────────
+    st.markdown(
+        '<div class="dulox-section-label" style="margin:0.8rem 0 0.3rem 0;">'
+        'OTROS MATERIALES — Herrajes / Accesorios / Componentes</div>',
+        unsafe_allow_html=True
+    )
+    st.caption("Manual: parte / cantidad / $ por unidad. Total = cant × valor_unit.")
+
+    otros_df = st.data_editor(
+        st.session_state[_otr_ikey][_OTROS_COLS],
+        key=f"bomedit_otros_{prefix}",
+        use_container_width=True, num_rows="dynamic", hide_index=True,
+        column_config={
+            "parte":      st.column_config.TextColumn("Parte", width="large"),
+            "cant":       st.column_config.NumberColumn("Cant", format="%d", step=1, min_value=1, width="small"),
+            "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %d", step=50, min_value=0, width="medium"),
+        },
+    )
+
+    otros_total = 0
+    if isinstance(otros_df, pd.DataFrame) and not otros_df.empty:
+        _o = otros_df.copy()
+        _o["cant"]       = pd.to_numeric(_o["cant"],       errors="coerce").fillna(1)
+        _o["valor_unit"] = pd.to_numeric(_o["valor_unit"], errors="coerce").fillna(0)
+        _o["Total $"]    = (_o["cant"] * _o["valor_unit"]).round().astype(int)
+        otros_total = int(_o["Total $"].sum())
+        _o_disp = _o[_o["parte"].fillna("").str.strip() != ""][["parte","cant","valor_unit","Total $"]]
+        if not _o_disp.empty:
+            st.dataframe(_o_disp, use_container_width=True, hide_index=True,
+                column_config={
+                    "valor_unit": st.column_config.NumberColumn("$ / unit", format="$ %.0f"),
+                    "Total $":    st.column_config.NumberColumn(format="$ %.0f"),
+                })
+
     # ── Consumibles ───────────────────────────────────────────────────────────
     st.markdown('<div class="dulox-section-label" style="margin:0.6rem 0 0.3rem 0;">CONSUMIBLES</div>', unsafe_allow_html=True)
     cons_df = st.data_editor(
         st.session_state[_con_ikey],
         key=f"bomedit_cons_{prefix}",
-        use_container_width=True,
-        num_rows="dynamic",
-        hide_index=True,
+        use_container_width=True, num_rows="dynamic", hide_index=True,
         column_config={
             "Total":    st.column_config.NumberColumn("Total $",   format="%.0f", step=1),
             "Precio_u": st.column_config.NumberColumn("Precio u.", format="%.0f", step=1),
@@ -438,28 +490,33 @@ def product_bom_expander(row: dict, key_prefix: str = "bom"):
     col_cost, col_btn = st.columns([3, 1])
     col_cost.markdown(
         f'<div style="font-size:0.88rem;padding:0.3rem 0;">'
-        f'<span style="color:var(--text-dim);">Mat: </span>'
+        f'<span style="color:var(--text-dim);">Fórmula: </span>'
         f'<span style="color:var(--text);font-weight:600;">${mat_total:,}</span>'
+        f'<span style="color:var(--text-dim);"> · Otros: </span>'
+        f'<span style="color:var(--text);font-weight:600;">${otros_total:,}</span>'
         f'<span style="color:var(--text-dim);"> · Cons: </span>'
         f'<span style="color:var(--text);font-weight:600;">${cons_total:,}</span>'
         f'<span style="color:var(--text-dim);"> · Total: </span>'
-        f'<span style="color:var(--green);font-weight:700;">${mat_total+cons_total:,}</span>'
+        f'<span style="color:var(--green);font-weight:700;">${mat_total+otros_total+cons_total:,}</span>'
         f'</div>',
         unsafe_allow_html=True,
     )
     if col_btn.button("💾 Guardar BOM", key=f"savebom_{prefix}", type="primary"):
-        # Merge computed values back into rows before saving
         save_rows = computed if computed else (
             mat_df.to_dict("records") if isinstance(mat_df, pd.DataFrame) else mat_init
         )
-        cons_rows = cons_df.to_dict("records") if isinstance(cons_df, pd.DataFrame) else cons_init
-        save_bom(handle, save_rows, cons_rows)
-        # Bust init hash so next render re-seeds from DB
+        cons_rows  = cons_df.to_dict("records") if isinstance(cons_df, pd.DataFrame) else cons_init
+        otros_rows = (
+            otros_df[_OTROS_COLS].to_dict("records")
+            if isinstance(otros_df, pd.DataFrame) else otros_init
+        )
+        save_bom(handle, save_rows, cons_rows, otros_rows)
         st.session_state.pop(_mat_ihsh, None)
         st.session_state.pop(_con_ihsh, None)
+        st.session_state.pop(_otr_ihsh, None)
         st.success(f"✅ BOM guardado — {handle}")
 
-    # ── ERP preview ───────────────────────────────────────────────────────────
+    # ── ERP preview (formula rows only) ───────────────────────────────────────
     if computed and mat_total > 0:
         with st.expander("📋 Vista previa ERP — Artículos a Consumir"):
             st.caption("Una fila por SKU (partes con mismo material se agrupan — sheet optimization).")
