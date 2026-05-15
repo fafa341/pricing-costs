@@ -79,7 +79,7 @@ def mat_type(tipo: str) -> str:
     formula_ml: Perfil, Tubo, Macizo — metro lineal
     manual:     Otro / hardware / empty
     """
-    t = (tipo or "").strip().lower()
+    t = (str(tipo) if tipo is not None and not (isinstance(tipo, float) and math.isnan(tipo)) else "").strip().lower()
     if t in _KG_TYPES:
         return "formula_kg"
     if t in _ML_TYPES:
@@ -98,7 +98,7 @@ def kg_neto(tipo: str, L_mm: Optional[float], A_mm: Optional[float],
     Tubo:         π × Ø × esp × L × 8e-6  (A_mm = outer diameter)
     Perfil/Macizo: None — billed per ML, not kg
     """
-    t = (tipo or "").strip().lower()
+    t = (str(tipo) if tipo is not None and not (isinstance(tipo, float) and math.isnan(tipo)) else "").strip().lower()
 
     if t in ("plancha", "coil"):
         if L_mm is None or A_mm is None or esp_mm is None:
@@ -155,7 +155,7 @@ def _lookup_global_price(tipo: str, calidad: str, esp_mm: Optional[float],
     if not global_prices:
         return DEFAULT_PRECIO_KG
 
-    t = (tipo or "").strip().lower()
+    t = (str(tipo) if tipo is not None and not (isinstance(tipo, float) and math.isnan(tipo)) else "").strip().lower()
     c = (calidad or DEFAULT_CALIDAD).strip()
 
     if t in ("plancha", "coil"):
@@ -193,7 +193,7 @@ def _esp_key(esp_mm: Optional[float]) -> str:
 def resolve_sku(tipo: str, calidad: str = DEFAULT_CALIDAD,
                 esp_mm: Optional[float] = None) -> dict:
     """Look up ERP SKU from inventory_map.json. Returns {sku_erp, assumed}."""
-    t = (tipo or "").strip().lower()
+    t = (str(tipo) if tipo is not None and not (isinstance(tipo, float) and math.isnan(tipo)) else "").strip().lower()
     c = (calidad or DEFAULT_CALIDAD).strip()
     assumed_calidad = not calidad or calidad.strip() == ""
     if assumed_calidad:
